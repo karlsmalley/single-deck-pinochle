@@ -1966,7 +1966,7 @@ function free_lead()
 		}
 		if (suitnum[i][k] == 0)
 		{
-			vsent[i][tricknum] += "Skipping " + suitnames[k] + " Because I Have None Left\n";
+			vsent[i][tricknum] += "Skipping " + suitnames[k] + " because I have none left\n";
 			myalert(mnames[i] + ": skipping " + suitnames[k] + " because I have none left");
 			k++;
 			continue; // no cards
@@ -1975,14 +1975,14 @@ function free_lead()
 		if (ahand[i][k][temp3] ==  0)
 		{
 			myalert(mnames[i] + ": skipping " + suitnames[k] + " because I do not have high card");
-			vsent[i][tricknum] += "Skipping " + suitnames[k] + " Because I Do Not Have The High Cardt\n";
+			vsent[i][tricknum] += "Skipping " + suitnames[k] + " because I do not have The high card\n";
 			k++;
 			continue; // skip trump unless trump-tight
 		}
 		if (suitnum[i][k] < lowsuitcount)
 		{
 			myalert(mnames[i] + ": considering " + suitnames[k] + " because I have the high card");
-			vsent[i][tricknum] += "Considering " + suitnames[k] + " Because I Have The High Card\n";
+			vsent[i][tricknum] += "Considering " + suitnames[k] + " Because I have the high card\n";
 			// Have boss in this suit
 			// Get rid of bare aces -- less chance of getting banged
 			lowsuitcount = suitnum[i][k]; // lowest suit count where player has boss
