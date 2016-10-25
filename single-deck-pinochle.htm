@@ -1,0 +1,3840 @@
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+<script>
+<!--
+//10 REM **********************************************************************
+//20 REM *                                                                    *
+//30 REM *     SINGLE HANDED PINOCHLE - WRITTEN BY KARL J. SMALLEY (1992)     *
+//40 REM *                                                                    *
+//50 REM *  MUCH OF SCREEN LOOK & FEEL BORROWED FROM A DOUBLE PINOCHLE GAME   *
+//60 REM *  WRITTEN BY BARBARA KNIAZ                                          *
+//70 REM *                                                                    *
+//80 REM **********************************************************************
+// Above are the first few lines from the 1992 BASIC version
+// Rewritten in javascript, html & CSS in 2010 (Version 2 released in 2012, 
+// Version 3 in 2013, 3.a in 2015, 3.b in 2016) 
+//
+// This version of single-deck partners pinochle is quite literally my Dad's version.
+// It is similar to a lot of other versions, but it has it's own little quirks.
+// There is no card passing. Talking the board is illegal (but irrelevant here).
+// Signal bidding is allowed, but I have not implemented it here.
+// Signal tricks (non-pointer of suit you are strong in when you fall off trump)
+//    are also allowed but not implemented here.
+// Renigging is enforced, but not possible here unless I have a bug.
+// Each player bids once starting with player to left of dealer.
+// Minimum bid is 21 (dealer gets bid for 20 if it is left on him/her). 
+//
+// It does not use the 10 point system. A's, 10's and K's are worth one point
+// There is one point for taking last trick. If a team does not pull a least one
+// trick, they had their heads rubbed and lose the game.
+//  
+// A lot of the above is semi-standard except the save and weight bids.
+//
+// Melding is where we go off the books. Below are the rules for scoring meld. 
+// Runs In Trump = 15, Runs Not In Trump =  0   (And Are A Crying Shame)
+// Aces   Around = 10, Double Aces   Around = 20
+// Kings  Around =  8, Double Kings  Around = 16
+// Queens Around =  6, Double Queens Around = 12
+// Jacks  Around =  4, Double Jacks  Around =  8
+// Pinochle = 4, Double Pinochle = 8
+// Nines Of Trump = 1 each (The Dix)
+// Marriages = 2, Marriages In Trump = 4 (unless they are already used in a run) 
+// A Roundhouse = 24 
+// A Roundhouse = 20 (If The Queen and King Of Trump Are In A Run)
+//
+// Most of the quirks (double stuff & head rub rule) are less likely, so 
+// it may not make a difference. The most common one to occur is double pinochle. 
+//
+//
+// Version 2 fixed a bug with dealer bids (only has to bed 1 more to win )
+// Version 2 allowed for an optiomal timer to clear tricks instead of hitting the continue link
+// Version 3 - Bug fixes
+// Version 3.a - Changed the way the computer plays trump when it is not lead.
+// Version 3.b - Do not point partner with ace, in bidder-up or out raise bid an extra 5 points, 
+//     when oponnent dealt and are above 95 and computer can not go out, DO NOT BID.
+// Version 4 (hopefully) use a combination of cookies/DHTML local storage to save retrieve settings & statistics
+
+// Some code was borrowed off the internet -- Psueudo-Random Number Generator, Trim Functions
+//
+// -->
+</script>
+<style type="text/css">
+A:link {text-decoration: underline; color: blue;}
+A:visited {text-decoration: underline; color: blue;}
+A:active {text-decoration: underline; color: blue;}
+A:hover {text-decoration: under   line; color: blue;}
+</style>
+<script language="JavaScript">
+// The Central Randomizer 1.3 (C) 1997 by Paul Houle (houle@msc.cornell.edu)
+// See:  http://www.msc.cornell.edu/~houle/javascript/randomizer.html
+
+
+function rnd() {
+        seed = (seed*9301+49297) % 233280;
+        return seed/(233280.0);
+};
+
+function rand(number) {
+        return Math.ceil(rnd()*number);
+};
+
+// end central randomizer. -->
+</script>
+<script language="JavaScript">
+today=new Date(); 	  	// use clock to seed pseudo-randomnumber genrator by default
+seed=today.getTime();
+trickdelay = 2;		// if a non-human plays last card, how long before we clear the cards, 0 for unlimited
+trickdelayopts = new Array();
+trickdelaylabels = new Array();
+trickdelaynumopts = 7;
+trickdelaylabels[0] = "Unlimited";
+trickdelaylabels[1] = "2 seconds";
+trickdelaylabels[2] = "5 seconds";
+trickdelaylabels[3] = "10 seconds";
+trickdelaylabels[4] = "15 seconds";
+trickdelaylabels[5] = "20 seconds";
+trickdelaylabels[6] = "25 seconds";
+trickdelayopts[0] = 0;
+trickdelayopts[1] = 2;
+trickdelayopts[2] = 5;
+trickdelayopts[3] = 10;
+trickdelayopts[4] = 15;
+trickdelayopts[5] = 20;
+trickdelayopts[6] = 25;
+
+debugmode=0; 			// If on(1) you will hundreds of alerts per hand 
+name="Bozo";			// If you don't want me to call you Bozo -- Type in your name when asked 
+handnum=0;			// Keeps track of the current handnumber 
+gamewinner=0;			// Set to 1 if we win, 2 if they win, 0 otherwise 
+dealer = 0;
+shand = new Array();		// Hand sorted by suit && rank with suit && rank combined
+humsort = new Array();		// Human Hand sorted by suit (trump first) && rank with suit && rank combined
+ahand = new Array();		// Three Dimensional Array [player][suit][rank] 
+				// Keeps track of cards left in hand [player=0] keeps track of all cards not played
+pahand = new Array();		// a copy of ahand as dealt
+phand = new Array();		// a copy of hand as dealt
+trump = new Array();		// preferred trump for each player
+bid = new Array();		// calculated bid for each suit for each player
+meld = new Array();		// meld for each player for each suit 
+power = new Array();		// power calculation for each suit for each player
+runs = new Array();		// number of runs in each suit for each player
+pin = new Array();		// number of pinochles for each player
+arounds = new Array();		// number of arounds for each rank for each player
+marrys = new Array();		// number of marriages foreach suit foreach player
+mnames = new Array();		// list of names (name[1] = human; names[2-4]= computer players)
+shuff = new Array();		// holds shuffled deck
+suits = new Array();		// holds html codes for each suit
+suitnames = new Array();	// suit names
+cards = new Array();		// holds character sreing for each rank
+curplays = new Array();		// current card played this trick for each player
+didlead = new Array();		// did each player have the lead this hand
+banging = new Array();		// for each player -- who is banging which suit
+suitnum = new Array();		// number of cards in each suit for each player
+aces = new Array();		// number of aces in each sit freach player 
+hlead = new Array();		// Who had lead freach trick in current hand 
+hmeld= new Array();		// meld foreach team for each hand
+htricks = new Array();		// trick count foreach team foreach hand
+hscore = new Array();		// score for each team after each hand
+hibidder = new Array();		// who bid on each hand 
+hbidder = new Array();		// who bid on each hand
+humplayed = new Array();	// what card a human player has left
+hibid = new Array();		// high bid for each player 
+hbid = new Array();		// final bid for each hand
+points = new Array();		// not sure
+hset = new Array();		// was bidder set for each hand
+played = new Array();		// what cards were played this trick by suit and  rank 
+hicard = new Array();		// highest remaining card in each suit
+splayed = new Array();		// suits played this trick
+tricks = new Array();		// all cards played by player and tricknum
+winners = new Array;		// trick winner by tricknmber
+sent = new Array();		// message about how computer decided to play a card 
+vsent = new Array();		// verbose message about how computer decided to play a card 
+curscoreus = 0; 			// Human team score
+curscorethem = 0;			// Computer team score
+uporout = 0;				// Both teams are over 95 -- Bidder up or out (Technically 100 but 95 is better in practice)
+nobid = new Array();		// Do not bid if opponent dealt and is over 95 and you can not go out this hand
+// player 1 = human, player 3 = human partner, players 2 and 4 are computer opponents
+i = 0;
+while (i <= 4)
+{
+	played[i] = new Array();
+	shand[i] = new Array();
+	phand[i] = new Array();
+	j = 0
+	ahand[i] = new Array();
+	pahand[i] = new Array();
+	while (j <= 4)
+	{
+		ahand[i][j] = new Array();
+		pahand[i][j] = new Array();
+		j++;
+	}
+	bid[i] = new Array();
+	meld[i] = new Array();
+	power[i] = new Array();
+	runs[i] = new Array();
+	arounds[i] = new Array();
+	marrys[i] = new Array();
+	suitnum[i] = new Array();
+	played[i] = new Array();
+	banging[i] = new Array();
+	tricks[i] = new Array();
+	sent[i] = new Array();
+	vsent[i] = new Array();
+	winners[i] = new Array();
+	power[i] = new Array();
+	if (i <= 2)
+	{
+		hmeld[i] = new Array();
+		htricks[i] = new Array();
+		hscore[i] = new Array();
+	}
+	i++;
+}
+
+cards[1] = "9";
+cards[2] = "J";
+cards[3] = "Q"; 
+cards[4] = "K";
+cards[5] = "10";
+cards[6] = "A";
+suitoutline = 0;
+if (suitoutline)
+{
+// My android phone rendering filled (black) suits strangely -- on others it is fine
+	suits[1] = "&#9828;";
+	suits[2] = "&#9825;";
+	suits[3] = "&#9831;";
+	suits[4] = "&#9826;";
+}
+else
+{
+	suits[1] = "&spades;";
+	suits[2] = "&hearts;";
+	suits[3] = "&clubs;";
+	suits[4] = "&diams;";
+}
+suitnames[1] = "Spades";
+suitnames[2] = "Hearts";
+suitnames[3] = "Clubs";
+suitnames[4] = "Diamonds";
+
+// LOAD LIST OF NAMES FOR OTHER PLAYERS ****
+mnames[2] = "Spock";
+mnames[3] = "Kirk";
+mnames[4] = "McCoy";
+mnames[5] = "Scotty";
+mnames[6] = "Sulu";
+mnames[7] = "Uhura";
+mnames[8] = "Checkov";
+mnames[9] = "Data";
+mnames[10] = "Picard";
+mnames[11] = "Worf";
+mnames[12] = "Reicher";
+// 440 REM **** YES, I AM A STAR TREK FAN
+
+bordersadded = 1;
+if (navigator.appName.substr(0,4) != "Nets")
+{
+	bordersadded = 0;
+} 
+if (bordersadded)
+{
+	cw = 45;
+	ch = 56;
+}
+else
+{
+	cw = 49;
+	ch = 60;
+}
+
+screenstr = "";
+creditsstr ="";
+
+//draw card banner screen displayed in credits and main menu and a non-card screen used everywhere else
+if (bordersadded)
+{
+	cbstr= '<div id="cbstr" style="position:absolute; top:5px; left:10px; width:985px; height:520px; ';
+	cbstr += ' border-style: solid;  border-width: 2px; overflow:hidden; background-color:#00AA00;">'  + "\n" + '</div>' + "\n";
+	ncbstr= '<div id="ncbstr" style="position:absolute; top:5px; left:10px; width:985px;  ';
+	ncbstr += ' border-style: solid;  border-width: 2px; height:520px; overflow:hidden; background-color:#00AA00;">'  + "\n" + '</div>' + "\n";
+}
+else
+{
+	cbstr= '<div id="cbstr" style="position:absolute; top:5px; left:10px; width:989px; height:524px; ';
+	cbstr += ' border-style: solid;  border-width: 2px; overflow:hidden; background-color:#00AA00;">'  + "\n" + '</div>' + "\n";
+	ncbstr= '<div id="ncbstr" style="position:absolute; top:5px; left:10px; width:989px;  ';
+	ncbstr += ' border-style: solid;  border-width: 2px; height:524px; overflow:hidden; background-color:#00AA00;">'  + "\n" + '</div>' + "\n";
+}
+
+draw_borders()
+
+creditsstr += '<div style="position:absolute;  z-index:1; left:105px; top:150px;  width: 780px; ';
+creditsstr += ' text-align:center;"><font face="arial black" size="+2">Single Deck Pinochle<br /><br /> ';
+creditsstr += 'By: Karl J. Smalley<br /> (v3.b:2016, v3.a:2015, v3:2014, v2:2012, v1:2010) <br /><br />';
+creditsstr += 'Based On A BASICA Program I Wrote In 1992<br />';
+creditsstr += '<a href="javascript:show_menu();">Close Credits</a>';
+creditsstr += '</font>' + "\n" + '</div>'+ "\n";
+function draw_borders()
+{
+//  Draw Borders of Alternating Jacks of Diamonds and Queens of Spades 
+	j = 1;
+	curcard = "j";
+	while (j < 10)
+	{
+		i = 1;
+		while (i < 22)
+		{
+
+			hilight =0;
+			if (j > 2 && j < 8 && i > 2 && i < 20)	{
+				i = 20;
+			hilight =0;
+				if (curcard == "j")
+				{
+					curcard = "q";
+				}
+				else
+				{
+					curcard = "j";
+				}
+			} 
+			vpos = (j-1)*58+5;
+			hpos=(i-1)*47+10;
+			if (curcard == "j")
+			{ 
+				r = 2;
+				s = 4;
+				curcard="q";
+			}
+			else
+			{ 
+				r = 3;
+				s = 1;
+				curcard="j";
+			}
+			cbstr += draw_card(vpos,hpos,r,s,0,"readonly","none",hilight)
+			i++;
+		}
+		j++;
+	}
+}
+function myalert(message)
+{
+	if (debugmode == 1)
+	{
+		alert(message);
+	}
+}
+function show_credits()
+{
+	myscreendiv = document.getElementById("myscreen");
+	myscreendiv.innerHTML = cbstr + creditsstr;
+}
+function show_menu()
+{
+	screenstr = '<div style="position:absolute;  z-index:1; left:105px; top:125px;  width: 780px; ';
+
+	screenstr += ' text-align:center;"><font face="arial black" size="+2">Main Menu<br />';
+	if (handnum == 0)
+	{
+		screenstr += '<br /><a href="javascript:enter_name();">New Hand</a><br />';
+		screenstr += '<a href="javascript:enter_seed();">Enter Random Seed</a><br />';
+	}
+	else
+	{
+		screenstr += '<a href="javascript:new_hand();">New Hand</a><br />';
+		screenstr += '<a href="javascript:replay_hand();">Replay Hand</a><br />';
+		screenstr += '<a href="javascript:show_hands();">Show Hands</a><br />';
+		screenstr += '<a href="javascript:show_tricks();">Show Tricks</a><br />';
+	}	
+	screenstr += '<a href="javascript:show_scoreboard();">Show Scoreboard</a><br />';
+	screenstr += '<a href="javascript:show_credits();">Show Credits</a><br />';
+	screenstr += '</font>' + "\n" + '</div>'+ "\n";
+	myscreendiv = document.getElementById("myscreen");
+	myscreendiv.innerHTML = cbstr + screenstr;
+}
+function show_scoreboard()
+{
+	screenstr = ncbstr + '<div id="sboard" style="position:absolute; left:15px; top:25px; ';
+	screenstr += ' height:500px; width: 975px; ';
+	screenstr += ' text-align:center; overflow: auto;"><font face="arial black" size="+2">';
+	screenstr += '<table align="center" border="2" cellpadding="0" celspacing="0" width="600"><tr>';
+	screenstr += '<td><font face="arial black" size="+2">';
+	screenstr += 'BID';
+	screenstr += '</font></td>';
+	screenstr += '<td><font face="arial black" size="+2">';
+	screenstr += 'US';
+	screenstr += '</font></td>';
+	screenstr += '<td><font face="arial black" size="+2">';
+	screenstr += 'THEM';
+	screenstr += '</font></td>';
+	screenstr += '</tr>';
+	var i = 1;
+	while (i <= handnum)
+	{
+		screenstr += '<tr>';
+
+		screenstr += '<td><font face="arial black" size="+2">';
+		thisbidder = "U";
+		if (hbidder[i] == 2)
+		{
+			thisbidder = "T";
+		}
+		thisbidder += '-' + hbid[i];
+		screenstr += i + '. ' + thisbidder;
+		screenstr += '</font></td>';
+			
+		screenstr += '<td><font face="arial black" size="+2">';
+		tscore  = hmeld[1][i];
+		if (hset[i] == 1)
+		{
+			tscore += " **SET** " + " = " + hscore[1][i];
+		}
+		else
+		{
+			tscore += " + " + htricks[1][i] + " = " + hscore[1][i];
+		}
+		screenstr += tscore;
+		screenstr += '</font></td>';
+
+		screenstr += '<td><font face="arial black" size="+2">';
+		tscore  = hmeld[2][i];
+		if (hset[i] == 2)
+		{
+			tscore += " **SET** " + " = " + hscore[2][i];
+		}
+		else
+		{
+			tscore += " + " + htricks[2][i] + " = " + hscore[2][i];
+		}
+		screenstr += tscore;
+		screenstr += '</font></td>';
+		screenstr += '</tr>';
+		i++;
+	}
+	while (i <= 10)
+	{
+		screenstr += '<tr>';
+
+		screenstr += '<td><font face="arial black" size="+2">';
+		screenstr += i + '. ';
+		screenstr += '</font></td>';
+			
+		screenstr += '<td><font face="arial black" size="+2">';
+		screenstr += ' &nbsp; </font></td>';
+
+		screenstr += '<td><font face="arial black" size="+2">';
+		screenstr += ' &nbsp; </font></td>';
+
+		screenstr += '</tr>';
+		i++;
+	}
+
+	screenstr += '<tr><td colspan="3" align="center"><font face="arial black" size="+2">';
+	screenstr += '<a href="javascript:show_menu();">Main Menu</a></font></td></tr></table>';
+	screenstr += '</font>' + "\n" + '</div>'+ "\n";
+	myscreendiv = document.getElementById("myscreen");
+	myscreendiv.innerHTML = screenstr;
+	var sbobj = document.getElementById("sboard");
+	sbobj.scrollTop = sbobj.scrollHeight;
+}	
+function first_game()
+{
+	screenstr = '<div style="position:absolute;  z-index:1; left:105px; top:125px;  width: 780px; ';
+	screenstr += ' text-align:center;"><font face="arial black" size="+2">';
+
+
+	mnames[1]= name;
+	i = 2;
+	while (i < 5)
+	{
+		tmpnum = rand(11)+1;
+		tmpstr2 = mnames[i];
+		mnames[i] = mnames[tmpnum];
+		mnames[tmpnum] = tmpstr2;
+		i++;
+	}
+	dealer = rand(4);
+
+	// real deal will beincremented in new game, but will be the same as below
+	tmpnum = dealer+1;
+	if (tmpnum == 5)
+	{
+		tmpnum = 1;
+	}
+	screenstr += "<br />Welcome " + mnames[1] + "<br /><br />";
+	screenstr += "Your Partner Is " + mnames[3]  + "<br />";
+	screenstr += "Your Oppnents Are " + mnames[2]  + " And " + mnames[4] + "<br />";
+	if(tmpnum == 1)
+	{
+		screenstr +=  "You Have The Honor Of The First Deal";
+	}
+	else
+	{
+		screenstr +=  mnames[tmpnum] + " Will Be Dealing The First Hand";
+	}
+
+	screenstr += '<br /><br /><a href="javascript:new_hand();">Click Here To Continue . . . </a><br />';
+	screenstr += '</font>' + "\n" + '</div>'+ "\n";
+	myscreendiv = document.getElementById("myscreen");
+	myscreendiv.innerHTML = cbstr + screenstr;
+}
+function new_hand()
+{
+	if (handnum == 0 || gamewinner > 0)
+	{
+		i = 0;
+		while (i <= handnum)
+		{
+			htricks[1][i] = 0;
+			htricks[2][i] = 0;
+			hmeld[1][i] = 0;
+			hmeld[2][i] = 0;
+			hscore[1][i] = 0;
+			hscore[2][i] = 0;
+			hset[i]=0;
+			hibid[i]=0;
+			hibidder[i]=0;
+			i++;
+		}
+		handnum = 0;
+		curscoreus = 0;
+		curscorethem = 0;
+
+	}
+	handnum++;
+	gamewinner = 0;
+	dealer++;
+	if (dealer == 5)
+	{
+		dealer = 1;
+	}
+	i = 1;
+	while (i <= 4)
+	{
+		hicard[i] = 6;
+		curplays[i] = 0;
+		j = 1;
+		while (j <= 6)
+		{
+			k = 1;
+			while (k <= 4)
+			{
+				ahand[i][k][j] = 0;
+				pahand[i][k][j] = 0;
+				k++;
+			}
+			j++;
+		}
+		j = 1;
+		while (j <= 12)
+		{
+			shand[i][j] = 0;
+			phand[i][j] = 0;
+			j++;
+		}
+		i++;
+	}
+	shuffle();
+	deal();
+	calculate_meld_bid();
+	get_bids();
+}
+function replay_hand()
+{
+	curscoreus = 0;
+	curscorethem = 0;
+	prevhand = handnum - 1;
+	if (prevhand > 0)
+	{
+		curscoreus =  hscore[1][prevhand];
+		curscorethem = hscore[2][prevhand];	
+	}
+	gamewinner = 0;
+	i = 1;
+	while (i <= 4)
+	{
+		hicard[i] = 6;
+		curplays[i] = 0;
+		j = 1;
+		while (j <= 6)
+		{
+			k = 1;
+			while (k <= 4)
+			{
+				ahand[i][k][j] = 0;
+				pahand[i][k][j] = 0;
+				k++;
+			}
+			j++;
+		}
+		j = 1;
+		while (j <= 12)
+		{
+			shand[i][j] = 0;
+			phand[i][j] = 0;
+			j++;
+		}
+		i++;
+	}
+//	shuffle();   // Reuse deck as it was shuffled
+	deal();
+	calculate_meld_bid();
+	get_bids();
+}	
+function calculate_meld_bid()
+{
+	// calclate melds and bids for each player
+	i=1;
+	while(i <= 4)
+	{
+		aces[i] = 0;
+		pin[i] = 0;
+		meld[i][0] =0;
+		meld[i][1] = 0;
+		meld[i][2] = 0;
+		meld[i][3] = 0;
+		meld[i][4] = 0;
+		j = 1;
+		while (j <= 12)
+		{
+			played[i][j] = 0;
+			j++;
+		}
+
+		// find pinochles
+		if (ahand[i][1][3] > 0 && ahand[i][4][2] > 0)
+		{
+			meld[i][0] = 4;
+			pin[i] = 1;
+		}
+		// double pinochle
+		if (ahand[i][1][3] == 2 && ahand[i][4][2] == 2)
+		{
+			meld[i][0] = 8;
+			pin[i] = 2;
+		}
+		// count aces used in bid calclation
+		aces[i] = ahand[i][1][6] + ahand[i][2][6] + ahand[i][3][6] + ahand[i][4][6];
+		j = 2;
+		while (j <= 6)
+		{
+			if (j == 5)
+			{
+				j = 6;
+			}
+			// temp will hold the minimum number of the current rank(j) in any suit(k) for each player(i) 
+			temp=3;
+			k = 1;
+			while (k <= 4)
+			{
+				//myalert(k);
+				if (ahand[i][k][j] < temp)
+				{
+					temp=ahand[i][k][j];
+				}
+				k++;
+			}
+			//if temp= 0 no around, if 1 then single around, if 2 double around
+			meld[i][0] += 2 * j * temp;
+			arounds[i][j] = temp;
+			if (j == 6)
+			{
+				meld[i][0] = meld[i][0] - 2 * temp
+				// aces around = 10 or 20 not 12 or 24
+			}
+
+			j++;
+		}
+		j = 1;
+		// find trump specific meld
+		while (j <= 4)
+		{
+
+			//count nines
+			meld[i][j] += ahand[i][j][1];
+			marrys[i][j] =0;
+			if (ahand[i][j][3] > 0  && ahand[i][j][4] > 0)
+			{
+				marrys[i][j] = 1;
+			}
+			// double marriage
+			if (ahand[i][j][3] == 2  && ahand[i][j][4] == 2)
+			{
+				marrys[i][j] = 2;
+			}
+			//marriages worth 2 no matter what trump is 
+			meld[i][0] += marrys[i][j] * 2;
+			// marriage in trump worth 4
+			meld[i][j] += marrys[i][j] * 2;
+
+			temp =  3;
+			k=1;
+			suitnum[i][j] = 0;
+			power[i][j] = 0;
+			while (k <= 6)
+			{
+				suitnum[i][j] += ahand[i][j][k];
+				power[i][j] += ahand[i][j][k] * k;
+				if (k > 1)
+				{
+					// 9 not needed for run
+					if (ahand[i][j][k] < temp)
+					{
+						temp = ahand[i][j][k];
+					}
+				} 
+			 	k++;
+			}
+
+			// temp holds the lowest count for J,Q,K,10,A of given suit(j) for player(i)
+			// if temp = 0  - no run, if temp = 1 - single run, if temp = 2 - double run
+			// run is worth 15 (but must subtract 4 from form marriage calc above)
+			// so each rn is only affing 11 more points than the marriage did
+			meld[i][j] += temp * 11;
+			runs[i][j] = temp;
+
+
+			j++;
+		}
+
+		j = 1;
+		// find hibid and preferred suit for each player
+		// hibid will hold highestbid and temp will hold current preffered trump suit
+		hibid = 0;
+		temp = 0;
+		while (j <= 4)
+		{
+			// Now calulate bid for each suit for each player
+			bid[i][j] = meld[i][0] + meld[i][j] + aces[i]*2 + Math.floor(suitnum[i][j]/2) + 5;
+			// and hear is how the computer players bid
+			// meld for a given suit if it is trump + 2 points for each ace + half the number of that suit  
+			// + 5 poits assumed meld + tricks from partner (as weak as this seems it works
+			// fairly well in practice). 
+			if (bid[i][j] == hibid)
+			{
+				// tiebreaker  --- look at the power for the contending suits
+				if ((power[i][j]*suitnum[i][j]) > (power[i][temp] * suitnum[i][temp]))
+				{
+					temp = j;
+				}
+			}
+			if (bid[i][j] > hibid)
+			{
+				temp = j;
+				hibid = bid[i][j];
+			}
+			j++;
+		}
+		trump[i] = temp;   
+		i++;
+	}
+}
+function deal()
+{
+
+	// cards shuffled -- lets deal them out
+	// k steps through the deck as we deal
+	//show_raw_hands();
+	k = 1;
+	i = 1;
+	j = 12;
+	tmpstr = "";
+	// not that it matters much but each player gets 12 cards at a time
+	while (i <= 4)
+	{
+		j = 1;
+		while (j <= 12)
+		{
+			tmpstr += shuff[k]; 
+			// The Ace of Diamonds is card 47 & 48 -- after this it they are both 24
+			tmpnum = Math.floor((shuff[k]/2)+0.5);
+			var s = Math.floor((tmpnum-1)/6)+1;
+			var r = tmpnum - ((s-1)*6);
+			ahand[i][s][r] = ahand[i][s][r]+1;
+			pahand[i][s][r] = pahand[i][s][r]+1;
+
+			tmpstr += " converted to " + tmpnum + " " + cards[r] + suits[s] +"\n";
+			j++;
+			k++;
+		}
+ 
+		s = 1;
+		cnum = 1;
+
+		while (s <= 4)
+		{
+			r = 6;
+			while (r > 0)
+			{
+				if (ahand[i][s][r] > 0)
+				{
+					shand[i][cnum] = (s-1)*6+r;
+					phand[i][cnum] = (s-1)*6+r;
+					if (i == 1)
+					{
+						humsort[cnum] = (s-1)*6+r;
+					}
+					cnum++;
+				}
+				if (ahand[i][s][r] == 2)
+				{
+					shand[i][cnum] = (s-1)*6+r;
+					phand[i][cnum] = (s-1)*6+r;
+					phand[i][cnum] = (s-1)*6+r;
+					if (i == 1)
+					{
+						humsort[cnum] = (s-1)*6+r;
+					}
+					cnum++;
+				}
+				r--;
+			}
+			s++;
+		}
+
+	
+		i++;
+	}
+	j = 1;
+	while (j <= 12)
+	{
+		humplayed[j] = 0; 
+		j++;
+	}
+//	show_raw_hands();
+}
+function shuffle()
+{
+	// shuffling
+	j = 1;
+	while(j <= 48)
+	{
+		shuff[j]  = j;
+		j++;
+	}
+	j = 1;
+//	show_deck();
+	while(j <= 48)
+	{
+		t = rand(48);
+		temp = shuff[j];
+		shuff[j]  = shuff[t];
+		shuff[t] = temp;
+		j++;
+	}
+//	show_deck();
+}
+function draw_human_hand(action)
+{
+	var humhandstr ="";
+	hpos = 205;
+	vpos = 380;
+	prevs =0;
+	j = 1;
+	while (j <= 12)
+	{
+		temp = humsort[j];
+		s = Math.floor((temp-1)/6)+1;
+		r = temp - (s-1)*6;
+		if (s != prevs)
+		{
+			// 10 Pixel Gap Between Suits
+			prevs=s;
+			hpos += 10;
+		}
+		blank=0;
+		if (humplayed[j] == 1)
+		{
+			blank = 1;
+		}
+		objective =j;
+		humhandstr += draw_card(vpos,hpos,r,s,blank,action,j);
+		hpos=hpos+45;
+
+		j++;
+	}
+
+	return humhandstr;
+}
+function show_hands()
+{
+	screenstr = ncbstr;
+	i = 1;
+	while (i <= 4)
+	{
+		vpos = 15+((i-1)*65); 
+		screenstr +='<div style="position:absolute; ';
+		screenstr +='top:' + (vpos+15) + 'px; left:20px; ';
+		screenstr +='width:260px; height:50px; ';
+		screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+		screenstr +='<font face="arial black" font size="+2">';
+		screenstr +=mnames[i];
+		if (i == dealer)
+		{
+			screenstr += "-DEALER";
+		}
+		screenstr +='</font>' + "\n" + '</div>'+ "\n";
+
+		j=1;
+		hpos = 320;
+		while (j <= 4)
+		{
+			r=6;
+			while(r > 0)
+			{
+				tmpnum = pahand[i][j][r];
+				while (tmpnum > 0)
+				{
+					screenstr+=draw_card(vpos,hpos,r,j);
+					tmpnum--;
+					hpos = hpos+47;
+				}
+				r--;
+			}
+			hpos=hpos+10;
+			j++;
+		}
+		i++;
+	}
+	hpos = 20;
+	vpos = vpos + 60;
+	screenstr +='<div style="position:absolute;  ';
+	screenstr +='top:' + (vpos+15) + 'px; left:20px; ';
+	screenstr +='width:260px; height:40px; ';
+	screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+	screenstr +='<font face="arial black" font size="+2">';
+	screenstr +="PLAYER | MELD/BID";
+	screenstr +='</font>' + "\n" + '</div>'+ "\n";
+	hpos = 320;
+	i = 1
+	while (i <= 4)
+	{
+		cardcolor = "black";
+		if ((i == 2) || (i == 4))
+		{
+			cardcolor = "red";
+		}
+		screenstr +='<div style="position:absolute; ';
+		screenstr +='top:' + (vpos+5) + 'px; left:' + hpos + 'px; ';
+		screenstr +='width:140px; height:40px; text-align:center; ';
+		screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+		screenstr +='<font face="arial black" font size="+3" color="' + cardcolor + '">';
+		screenstr += suits[i];
+		screenstr +='</font>' + "\n" + '</div>'+ "\n";
+		hpos = hpos + 150;
+		i++;
+	}
+		
+	i = 1;
+	uporoutmark = "";
+	if (uporout)
+	{
+		uporoutmark = "U";
+	}
+	while (i <= 4)
+	{
+		nobidmark = "";
+		if (nobid[i] == 1)
+		{
+			nobidmark = "N";
+		}
+		vpos = vpos+40; 
+		screenstr +='<div style="position:absolute; ';
+		screenstr +='top:' + (vpos+15) + 'px; left:20px; ';
+		screenstr +='width:260px; height:40px; ';
+		screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+		screenstr +='<font face="arial black" font size="+2">';
+		screenstr +=mnames[i];
+		if (i == dealer)
+		{
+			screenstr += "-DEALER";
+		}
+		screenstr +='</font>' + "\n" + '</div>'+ "\n";
+		hpos = 320;
+		j = 1
+		while (j <= 4)
+		{
+
+			screenstr +='<div style="position:absolute; ';
+			screenstr +='top:' + (vpos+14) + 'px; left:' + hpos + 'px; ';
+			screenstr +='width:140px; height:40px; text-align:center; ';
+			screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+			screenstr +='<font face="arial black" font size="+2" >';
+			screenstr += (meld[i][0]+meld[i][j]) + '/' + bid[i][j];
+			if (trump[i] == j)
+			{
+				screenstr += '*';
+			}
+			screenstr += uporoutmark + nobidmark;
+			screenstr +='</font>' + "\n" + '</div>'+ "\n";
+			hpos = hpos + 150;
+			j++;
+		}
+		i++;
+	}
+
+	vpos = vpos+40; 
+	screenstr +='<div style="position:absolute; ';
+	screenstr +='top:' + (vpos+15) + 'px; left:20px; ';
+	screenstr +='width:700px; height:40px; ';
+	screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+	screenstr +='<font face="arial black" font size="+2">';
+	screenstr += '*-PREF. TRUMP &nbsp;&nbsp;U-UP/OUT &nbsp;&nbsp;N-NO BID &nbsp;&nbsp;';
+
+	screenstr +='<a href="javascript:show_menu();">Main Menu</a>';
+	screenstr +='</font>' + "\n" + '</div>'+ "\n";
+	myscreendiv = document.getElementById("myscreen");
+	myscreendiv.innerHTML = screenstr;
+}
+function show_tricks()
+{
+	screenstr = ncbstr;
+	j = 1;
+	while (j <= 12)
+	{
+		sent[1][j] = "SUPPOSED HUMAN LOGIC";
+		vsent[1][j] = "SUPPOSED HUMAN LOGIC";
+		j++;
+	} 
+	var i = 1;
+	while (i <= 4)
+	{
+		vpos = 50+((i-1)*75); 
+		screenstr +='<div style="position:absolute; ';
+		screenstr +='top:' + (vpos+15) + 'px; left:20px; ';
+		screenstr +='width:260px; height:50px; ';
+		screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+		screenstr +='<font face="arial black" font size="+2">';
+		screenstr +=mnames[i];
+		if (i == dealer)
+		{
+			screenstr += "-DEALER";
+		}
+		screenstr +='</font>' + "\n" + '</div>'+ "\n";
+
+		var j=1;
+		hpos = 320;
+		while (j <= 12)
+		{
+			if (i == 1)
+			{
+				screenstr +='<div style="position:absolute; border-style: none; ';
+				screenstr +='top:10px; left:' + (hpos+2) + 'px; ';
+				screenstr +='width:42px; height:30px; text-align: center; ';
+				screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+				screenstr +='<font face="arial black" font size="+2">';
+				screenstr +=j;
+				screenstr +='</font>' + "\n" + '</div>'+ "\n";
+			}
+			temp = tricks[i][j];
+			hilight = 0;
+			if (hlead[j] ==  i)
+			{
+				hilight = 1;
+			}
+			s = Math.floor((temp-1)/6)+1;
+			r = temp - (s-1)*6;
+			screenstr+=draw_card((vpos),hpos,r,s,0,"showtrick",(i-1)*12+j,hilight);
+			hpos = hpos+47;
+
+			j++;
+		}
+		i++;
+	}
+	myscreendiv = document.getElementById("myscreen");
+	myscreendiv.innerHTML = screenstr;
+	showtrickstr = screenstr;
+	hpos = 20;
+	vpos = vpos + 60;
+	stcurname = 1;
+	stcurtrick = 1;
+	screenstr +='<div style="position:absolute; border-style: solid; ';
+	screenstr +='top:' + (vpos+15) + 'px; left:20px; text-align:center; ';
+	screenstr +='width:860px; height:165px; ';
+	screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+	screenstr +='<font face="arial black" font size="+2">';
+	screenstr +='<form name="dummy">';
+	screenstr +='<table border="0" cellpadding="0" cellspacing="0" align="center">';
+	screenstr +='<tr><td valign="bottom"><font face="arial black" font size="+2">';
+	screenstr +='<textarea name="message" readonly rows=8 cols=80>Blue Cards Are Leads, Click On Any Card For Info On The Decision To Play That Card.</textarea><br /><br />';
+	screenstr +='</font></td>';
+	screenstr +='<td valign="center">';
+	screenstr +='<font face="arial black" font size="+2">';
+	screenstr +=' &nbsp; &nbsp; <a href="javascript:show_menu();">Main Menu</a>';
+	screenstr +='</font></td>';
+	screenstr +='</tr"></table>';
+	myscreendiv = document.getElementById("myscreen");
+	myscreendiv.innerHTML = screenstr;
+}
+function why_this_card(trickcard)
+{
+	var player = Math.floor((trickcard - 1)/12)+1;
+	var card = trickcard - (player-1)*12;
+	document.dummy.message.value = "Blue Cards Are Leads, Click On Any Card For Info On The Decision To Play That Card.\n";
+	document.dummy.message.value += "Player: " + mnames[player] + " Trick: " + card + "\n";
+	document.dummy.message.value += vsent[player][card];
+}	
+function changename(change)
+{
+	stcurname += change;
+	if (stcurname == 0)
+	{
+		stcurname = 4;
+	}
+	if (stcurname == 5)
+	{
+		stcurname = 1;
+	}
+	document.dummy.selname.value = mnames[stcurname];
+	document.dummy.message.value = vsent[stcurname][stcurtrick];
+}
+function changetrick(change)
+{
+	stcurtrick += change;
+	if (stcurtrick == 0)
+	{
+		stcurtrick = 12;
+	}
+	if (stcurtrick == 13)
+	{
+		stcurtrick = 1;
+	}
+	document.dummy.seltrick.value = stcurtrick;
+	document.dummy.message.value = vsent[stcurname][stcurtrick];
+}
+function get_bids()
+{
+	myscreendiv = document.getElementById("myscreen");
+	seltrump=0;
+
+	screenstr = ncbstr;
+	screenstr += draw_decks();
+	screenstr += draw_players();
+	screenstr += draw_human_hand("readonly");
+	screenstr += draw_status();
+	screenstr += draw_score();
+	seltrumpscr = screenstr; 
+	whobid = dealer +1;
+	uporout = 1;
+	if (curscorethem < 95)
+	{
+		uporout = 0;
+	}
+	if (curscoreus < 95)
+	{
+		uporout = 0;
+	}
+	if (whobid == 5)
+	{
+		whobid = 1;
+	}
+	curbid = 0;
+	curbidder = 0;
+	while (whobid != 1)
+	{
+		if (whobid == 2)
+		{
+			talign = "left";
+			vpos = 250;
+			hpos = 170;
+		}
+		if (whobid == 3)
+		{
+			talign = "center";
+			vpos = 180;
+			hpos = 430;
+		} 
+		if (whobid == 4)
+		{
+			talign = "right";
+			vpos = 250;
+			hpos = 650;
+		}
+		preftrump = trump[whobid];
+		thisbid = bid[whobid][preftrump];
+		if (uporout)
+		{
+// 3.b take a bigger chance in bidder up or out
+			thisbid += 5;
+		}
+// 3.b if opponent is dealing, about to go out and current bidder can not go out -- DO NOT BID		
+		nobid[whobid] = 0;
+		if ((whobid == 1 || whobid == 3) && (dealer == 2 || dealer == 4) )
+		{
+			if (curscorethem > 94 && ((curscoreus + thisbid) < 121))
+			{
+				nobid[whobid] = 1;
+			}
+		}
+		if ((whobid == 2 || whobid == 4 )&& (dealer == 1 || dealer == 3) )
+		{
+			if (curscoreus > 94 && ((curscorethem + thisbid) < 121))
+			{
+				nobid[whobid] = 1;
+			}
+		}
+		if ((thisbid > curbid) && (thisbid >= 21) && (nobid[whobid] != 1))
+		{
+	
+			if (dealer == whobid)
+			{
+				curbid++;
+			}
+			else
+			{
+				curbid = thisbid;
+			}
+
+			curbidder = whobid;
+	
+			thisbid = "BID " + thisbid;
+		}
+		else
+		{
+			thisbid = "PASS";
+		}
+	//	tmpstr = "whobid " + whobid + "\n";
+	//	tmpstr += "curscoreus " + curscoreus + "\n";
+	//	tmpstr += "curscorethem " + curscorethem + "\n";
+	//	tmpstr += "uporout " + uporout + "\n";
+	//	tmpstr += "nobid[" + whobid + "] " + nobid[whobid] + "\n";
+	//	tmpstr += "thisbid " + thisbid + "\n";
+	//	alert(tmpstr);
+		
+		
+		
+		screenstr +='<div style="position:absolute; text-align: ' + talign + '; ';
+		screenstr +='top:' + vpos + 'px; left:' + hpos + 'px; ';
+		screenstr +='width:150px; height:40px; ';
+		screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+		screenstr +='<font face="arial black" font size="+2">';
+		screenstr += thisbid + '<br clear="all" /></font>' + "\n" + '</div>'+ "\n";
+
+		whobid++;
+		if (whobid == 5)
+		{
+			whobid = 1;
+		}
+	}
+	myscreendiv.innerHTML = screenstr;
+	savescreen = screenstr;
+	vpos = 300;
+	hpos = 340;
+	humanbid = 21;
+	lobid = 21;
+	if (curbid > 0)
+	{
+		humanbid = curbid +1;
+		lobid = humanbid;
+	}
+	if (curbid == 0 && dealer == 1)
+	{
+		humanbid = 20;
+		humandidbid();
+	}
+	else
+	{
+		screenstr +='<div style="position:absolute; text-align: center; ';
+		screenstr +='top:' + vpos + 'px; left:' + hpos + 'px; ';
+		screenstr +='width:300px; height:90px; ';
+		screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+		screenstr +='<font face="arial black" font size="+2">';
+		screenstr += '<table align="center" border="0"><tr><td valign="bottom">';
+		screenstr +='<input type="button" style="font-weight: bold; " onClick="javacript:increase_human_bid();" value="&uarr;">';
+		screenstr +='</td><td rowspan="2" valign="middle"> &nbsp; <input id="humbidbtton" type="button" ';
+		screenstr +=' value="BID ' + humanbid + '" ';
+		screenstr +=' onClick="javascript:humandidbid();" style="font-weight: bold; " > &nbsp; &nbsp; ';
+		screenstr +='<input type="button" onClick="javascript:humanpasses();" value="PASS" '; 
+		screenstr +='style="font-weight  : bold;" ></td></tr>';
+		screenstr +='<tr><td valign="top"><input type="button"  style="font-weight  : bold; " ' ;
+		screenstr +='onClick="javacript:decrease_human_bid(' + lobid + ');" value="&darr;"></td></tr></table>';  
+		screenstr += '</font>' + "\n" + '</div>'+ "\n";
+
+		myscreendiv.innerHTML = screenstr;
+	}
+}
+function humannamestrump(humtrump)
+{	
+	seltrump = humtrump;
+	show_meld();
+}
+function get_human_trump()
+{
+	hpos = 250;
+	vpos = 300;
+	screenstr = "";
+	myscreendiv = document.getElementById("myscreen");
+	screenstr = seltrumpscr;
+	screenstr +='<div style="position:absolute; text-align: center; ';
+	screenstr +='top:' + vpos + 'px; left:' + hpos + 'px; ';
+	screenstr +='width:500px; height:60px; ';
+	screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+	screenstr +='<font face="arial black" font size="+2">';
+	screenstr +='Name Trump: &nbsp;';
+	var i = 1;
+	while (i <= 4)
+	{
+		screenstr +=' <input type="button" onClick="javascript:humannamestrump(' + i + ');" value="';
+		if (i == 2 || i == 4)
+		{
+			screenstr += suits[i] + '" style="font-weight: bold; font-size:16pt; color: red;" >';
+		}
+		else
+		{
+			screenstr += suits[i] + '" style="font-weight: bold; font-size:16pt; color: black;" >';
+		}
+
+		i++;
+	}
+	screenstr += '</font>' + "\n" + '</div>'+ "\n";
+	myscreendiv.innerHTML = screenstr;
+}
+function draw_score()
+{
+	vpos = 5;
+	hpos = 720;
+	ww = 278;
+	wh = 100;
+	if (bordersadded)
+	{
+		ww = 274;
+		wh = 96;
+	}
+	scorestr = "";
+	scorestr +='<div style="position:absolute; text-align: left; border-style: solid;  ';
+	scorestr +='top:' + vpos + 'px; left:' + hpos + 'px;  border-width: 2px; ';
+	scorestr +='width:' + ww + 'px; height:' + wh + 'px; ';
+	scorestr +='overflow:hidden; background-color:#00AA00; line-height: 175%; "> ';
+	scorestr +='<font face="arial black" font size="+2">';
+	scorestr +=' &nbsp; Current Scores<br clear="all" />';
+	prevhand = handnum - 1;
+	if (prevhand == 0)
+	{
+		scorestr +=' &nbsp; Us: 0<br  clear="all" />';
+		scorestr +=' &nbsp; Them: 0<br clear="all" />';
+	}
+	else
+	{
+		scorestr +=' &nbsp; Us: ' + hscore[1][prevhand] + '<br clear="all"  />';
+		scorestr +=' &nbsp; Them: ' + hscore[2][prevhand] + '<br clear="all"  />';
+	}
+	scorestr += '</font>' + "\n" + '</div>'+ "\n";
+	return scorestr;
+}
+function draw_status()
+{
+	vpos = 5;
+	hpos = 10;
+	ww = 278;
+	wh = 100;
+	if (bordersadded)
+	{
+		ww = 274;
+		wh = 96;
+	}
+	statstr = "";
+	statstr +='<div style="position:absolute; text-align: left; border-style: solid;  ';
+	statstr +='top:' + vpos + 'px; left:' + hpos + 'px; border-width: 2px; ';
+	statstr +='width:' + ww + 'px; height:' + wh + 'px; ';
+	statstr +='overflow:hidden; background-color:#00AA00; line-height: 175%; "> ';
+	statstr +='<font face="arial black" font size="+2">';
+	statstr +=' &nbsp; Hand #' + handnum + '<br  clear="all" />';
+	if (seltrump == 0)
+	{
+		statstr +=' &nbsp; Bid: <br  clear="all" />';
+		statstr +=' &nbsp; Trump: <br  clear="all" />';
+	}
+	else
+	{
+		tcolor="black";
+		if (seltrump == 2 || seltrump == 4)
+		{
+			tcolor="red";
+		}
+		statstr +=' &nbsp; Bid: ' + mnames[curbidder] + '@' + curbid + '<br  clear="all" />';
+		statstr +=' &nbsp; Trump: <font size = "+3" color="' + tcolor + '">' + suits[seltrump] + '</font>' + '<br  clear="all" />';
+	}
+	statstr += '</font>' + "\n" + '</div>'+ "\n";
+	return statstr;
+}
+function humanpasses()
+{
+	humanbid =0;
+	humandidbid();
+}
+function humandidbid()
+{
+	myscreendiv = document.getElementById("myscreen");
+	screenstr = savescreen;
+	myscreendiv.innerHTML = screenstr;
+	if (humanbid > 0)
+	{
+		curbid=humanbid;
+		curbidder=1;
+		thisbid = "BID " + humanbid;
+	}
+	else
+	{
+		thisbid = "PASS";
+	}
+
+	talign = "center";
+	hpos = 430;
+	vpos = 320;
+	screenstr +='<div style="position:absolute; text-align: ' + talign + '; ';
+	screenstr +='top:' + vpos + 'px; left:' + hpos + 'px; ';
+	screenstr +='width:150px; height:40px; ';
+	screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+	screenstr +='<font face="arial black" font size="+2">';
+	screenstr += thisbid + '</font>' + "\n" + '</div>'+ "\n";
+	myscreendiv.innerHTML = screenstr;
+
+	whobid = 2;
+	stopat = dealer + 1;
+	if (stopat ==  5)
+	{
+		stopat = 1;
+	}
+	if (uporout)
+	{
+// 3.b take a bigger chance in bidder up or out
+		thisbid += 5;
+	}
+// 3.b if opponent is dealing, about to go out and current bidder can not go out -- DO NOT BID		
+
+	while (whobid != stopat)
+	{
+		if (whobid == 2)
+		{
+			talign = "left";
+			vpos = 250;
+			hpos = 170;
+		}
+		if (whobid == 3)
+		{
+			talign = "center";
+			vpos = 180;
+			hpos = 430;
+		} 
+		if (whobid == 4)
+		{
+			talign = "right";
+			vpos = 250;
+			hpos = 650;
+		}
+		preftrump = trump[whobid];
+		thisbid = bid[whobid][preftrump];
+		lobid = 21;
+		if (curbid == 0 && whobid == dealer)
+		{
+			thisbid=20;
+			lobid = 20;
+		}
+
+		nobid[whobid] = 0;
+		if ((whobid == 1 || whobid == 3) && (dealer == 2 || dealer == 4) )
+		{
+			if (curscorethem > 94 && ((curscoreus + thisbid) < 121))
+			{
+				nobid[whobid] = 1;
+			}
+		}
+		if ((whobid == 2 || whobid == 4 )&& (dealer == 1 || dealer == 3) )
+		{
+			if (curscoreus > 94 && ((curscorethem + thisbid) < 121))
+			{
+				nobid[whobid] = 1;
+			}
+		}
+		
+		if ((thisbid > curbid) && (thisbid >= lobid) && (nobid[whobid] != 1))
+		{
+
+			if (curbid >= lobid && whobid == dealer)
+			{
+				thisbid = curbid + 1;
+			}
+			curbidder = whobid;
+			curbid = thisbid;
+			thisbid = "BID " + thisbid;
+		}
+		else
+		{
+			thisbid = "PASS";
+		}
+		tmpstr = "whobid " + whobid + "\n";
+		tmpstr += "curscoreus " + curscoreus + "\n";
+		tmpstr += "curscorethem " + curscorethem + "\n";
+		tmpstr += "uporout " + uporout + "\n";
+		tmpstr += "nobid[" + whobid + "] " + nobid[whobid] + "\n";
+		tmpstr += "thisbid " + thisbid + "\n";
+		//alert(tmpstr);
+		screenstr +='<div style="position:absolute; text-align: ' + talign + '; ';
+		screenstr +='top:' + vpos + 'px; left:' + hpos + 'px; ';
+		screenstr +='width:150px; height:40px; ';
+		screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+		screenstr +='<font face="arial black" font size="+2">';
+		screenstr += thisbid + '</font>' + "\n" + '</div>'+ "\n";
+		whobid++;
+		if (whobid == 5)
+		{
+			whobid = 1;
+		}
+	}
+	myscreendiv.innerHTML = screenstr;
+	if (curbidder == 1)
+	{
+		if (dealer == 1 && curbid != 20)
+		{
+			get_human_trump();
+		}
+		else
+		{
+			screenstr +='<div style="position:absolute; text-align: ' + talign + '; ';
+			screenstr +='top:470px; left:750px;  ';
+			screenstr +='width:200px; height:40px; ';
+			screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+			screenstr +='<font face="arial black" font size="+2">';
+			screenstr +='<a href="javascript:';
+			screenstr +='get_human_trump();';
+			screenstr += '">Continue</a></font>' + "\n" + '</div>'+ "\n";
+
+			myscreendiv.innerHTML = screenstr;
+		}
+	}
+	else
+	{
+		seltrump = trump[curbidder];
+		if (dealer != 1)
+		{
+			screenstr +='<div style="position:absolute; text-align: ' + talign + '; ';
+			screenstr +='top:470px; left:750px;  ';
+			screenstr +='width:200px; height:40px; ';
+			screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+			screenstr +='<font face="arial black" font size="+2">';
+			screenstr +='<a href="javascript:';
+			screenstr +='show_meld();';
+			screenstr += '">Continue</a></font>' + "\n" + '</div>'+ "\n";
+			myscreendiv.innerHTML = screenstr;
+		}
+		else
+		{
+			show_meld();
+		}
+	}	
+}
+function show_meld()
+{
+	// nw that trump is selected, rearrange human hand
+	var i = 1;
+	var cnum = 1;
+	var csuit = seltrump - 1;
+	while (i <= 4)
+	{
+		csuit++;
+		if (csuit == 5)
+		{
+			csuit = 1;
+		}
+		j = 6;
+		while (j > 0)
+		{
+			if (ahand[1][csuit][j] > 0)
+			{
+				humsort[cnum] = (csuit-1)*6 + j;
+				cnum++;
+			}
+			if (ahand[1][csuit][j] == 2)
+			{
+				humsort[cnum] = (csuit-1)*6 + j;
+				cnum++;
+			}
+			j--;
+		}
+		i++;
+	}
+	
+	screenstr = ncbstr;
+	screenstr += draw_players();
+	screenstr += draw_status();
+	screenstr += draw_score();
+	var vposa = new Array();
+	var hposa = new Array();
+	vposa[1] = 324;
+	hposa[1] = 330;
+	vposa[2] = 197;
+	hposa[2] = 95;
+	vposa[3] = 70;
+	hposa[3]  = 330;
+	vposa[4] = 197;
+	hposa[4] = 580;
+	ww = 330;
+	wh =129;
+	if (bordersadded)
+	{
+		wh = 123;
+		vposa[1] = 323;
+		vposa[3] = 73;
+		vposa[2] = 198;
+		vposa[4] = 198;
+	}	
+
+	i = 1 ;
+	while (i<= 4)
+	{
+		screenstr +='<div style="line-height: 150%; position:absolute; text-align: left; border-style: solid; ';
+		screenstr +='top:' + vposa[i] + 'px; left:' + hposa[i] + 'px; ';
+		screenstr +='width:' + ww + 'px; height:' + wh + 'px; ';
+		screenstr +='border-width:2px;  overflow:hidden; background-color:#00AA00;  "> ';
+		screenstr +='<font face="arial black" font size="+2"> &nbsp;MELD: ' + (meld[i][seltrump] + meld[i][0]) + '<br clear="all">';
+		j = 1;
+		while (j <= 4)
+		{
+			linecolor = "black";
+			if (j == 2 || j == 4)
+			{
+				linecolor = "red";
+			}
+			screenstr += '<font color="' + linecolor + '">&nbsp;' + suits[j] + " &nbsp; ";
+			comma = "";
+			if (arounds[i][6] > 0 || (runs[i][j] > 0 && seltrump == j))
+			{
+				screenstr += comma + "A";
+				comma = ", ";
+			}
+
+			if (arounds[i][6] == 2 || (runs[i][j] == 2  && seltrump == j))
+			{
+				screenstr += comma + "A";
+				comma = ", ";
+			}
+			
+			if (runs[i][j] > 0 && seltrump == j)
+			{
+				screenstr += comma + "10";
+				comma = ", ";
+			}
+			if (runs[i][j] == 2 && seltrump == j)
+			{
+				screenstr += "10" + comma;
+				comma = ", ";
+			}
+
+			if (arounds[i][4] > 0 || (runs[i][j] > 0 && seltrump == j) || marrys[i][j] > 0)
+			{
+				screenstr += comma + "K";
+				comma = ", ";
+			}
+			if (arounds[i][4] == 2 || (runs[i][j] == 2 && seltrump == j) || marrys[i][j] == 2)
+			{
+				screenstr += comma + "K";
+				comma = ", ";
+			}
+
+			if (arounds[i][3] > 0 || (runs[i][j] > 0 && seltrump == j) || marrys[i][j] > 0  || (j == 1 && pin[i] > 0))
+			{
+				screenstr += comma + "Q";
+				comma = ", ";
+			}
+			if (arounds[i][3] == 2 || (runs[i][j] == 2 && seltrump == j) || marrys[i][j] == 2 || (j == 1 && pin[i] == 2))
+			{
+				screenstr += comma + "Q";
+				comma = ", ";
+			}
+			if (arounds[i][2] > 0 || (runs[i][j] > 0 && seltrump == j) || (j == 4 && pin[i] > 0))
+			{
+				screenstr += comma + "J";
+				comma = ", ";
+			}
+			if (arounds[i][2] == 2 || (runs[i][j] == 2 && seltrump == j) || (j == 4 && pin[i] == 2))
+			{
+				screenstr += comma + "J";
+				comma = ", ";
+			}
+			if (ahand[i][j][1] > 0 && seltrump == j)
+			{
+				screenstr += comma + "9";
+				comma = ", ";
+			}
+			if (ahand[i][j][1] == 2 && seltrump == j)
+			{
+				screenstr += comma + "9";
+				comma = ", ";
+			}
+
+
+			screenstr += '<br clear="all"/></font>';
+			j++;
+		}
+		screenstr += '</font>' + "\n" + '</div>'+ "\n";
+		i++;
+	}
+
+
+
+	screenstr +='<div style="position:absolute; text-align: ' + talign + '; ';
+	screenstr +='top:470px; left:750px;  ';
+	screenstr +='width:200px; height:40px; ';
+	screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+	screenstr +='<font face="arial black" font size="+2">';
+	screenstr +='<a href="javascript:play_tricks();';
+	screenstr += '">Continue</a></font>' + "\n" + '</div>'+ "\n";
+
+	myscreendiv = document.getElementById("myscreen");
+	myscreendiv.innerHTML = screenstr;
+}
+function play_tricks()
+{
+	hmeld[1][handnum] = meld[1][0] + meld[1][seltrump] + meld[3][0] + meld[3][seltrump];
+	hmeld[2][handnum] = meld[2][0] + meld[2][seltrump] + meld[4][0] + meld[4][seltrump];
+	hbidder[handnum] = 1;
+	if (curbidder == 2 || curbidder == 4)
+	{
+		hbidder[handnum] = 2;
+	}
+	hbid[handnum] = curbid;
+	i = 1;
+	while (i <= 12)
+	{
+		hlead[i] = 0;
+		i++;
+	}
+	hlead[1] = curbidder;
+	i=0;
+	while (i <= 4)
+	{
+		hicard[i] = 6;
+		didlead[i] = 0;		
+		j = 1;
+		while (j <= 6)
+		{
+			played[i][j] = 0;
+			j++;
+		}
+		j =  1;
+		while (j <= 4)
+		{
+			banging[i][j] = 0;
+			j++;
+		}
+		suitnum[0][i] = 12;
+		j =  1;
+		while (j <= 12)
+		{
+			tricks[i][j] = 0;
+			humplayed[j] = 0;
+			played[i][j] = 0;
+			j++;
+		}
+		i++;
+	}
+	j = 1;
+	while (j <= 4)
+	{
+		k = 1;
+		while (k <= 6)
+		{
+			ahand[0][j][k] = 2;
+			k++;
+		}
+		j++;
+	}
+	points[1]=0;
+	points[2]=0;
+	point1=0;
+	point2=0;
+	noheadrub1 = 0;
+	noheadrub2 = 0;
+	trickstr = ncbstr;
+	trickstr += draw_decks();
+	trickstr += draw_players();
+	trickstr += draw_status();
+	trickstr += draw_score();
+	myscreendiv = document.getElementById("myscreen");
+	myscreendiv.innerHTML = trickstr;
+	curplayer = curbidder;
+	numthistrick = 1;
+	tricknum= 1;
+	play_all_tricks();
+
+}
+function show_points_taken()
+{
+	vpos = 100;
+	hpos = 550;
+	var ptsstr = "";
+
+	ptsstr += '<div style="position:absolute; ';
+	ptsstr += 'top:' + vpos + 'px; left:' + hpos + 'px; ';
+	ptsstr += 'width:150px; height:40px; ';
+	ptsstr += 'overflow:hidden; background-color:#00AA00;">';
+	ptsstr +='<font face="arial black" font size="+2">';
+	ptsstr +='PTS: ' + points[1];
+	ptsstr += '</font>' + "\n" + '</div>'+ "\n";
+	vpos = 185;
+	hpos = 100;
+
+	ptsstr += '<div style="position:absolute; ';
+	ptsstr += 'top:' + vpos + 'px; left:' + hpos + 'px; ';
+	ptsstr += 'width:150px; height:40px; ';
+	ptsstr += 'overflow:hidden; background-color:#00AA00;">';
+	ptsstr +='<font face="arial black" font size="+2">';
+	ptsstr +='PTS: ' + points[2];
+	ptsstr += '</font>' + "\n" + '</div>'+ "\n";
+
+	return ptsstr;
+}	
+function play_all_tricks()
+{
+	myscreendiv = document.getElementById("myscreen");
+	myscreendiv.innerHTML = trickstr;
+	screenstr = trickstr;
+	screenstr += show_points_taken();	
+	myscreendiv.innerHTML = screenstr;
+	wasbanged = 0;
+	finalwinner = 0;
+	finalhiplay = 0;
+	finalhitrump = 0;
+	hiplay = 0;
+	hitrump = 0;
+	win = 0;
+	if (tricknum == 13)
+	{
+		if (handnum == 1)
+		{
+			prevscore1 = 0;
+			prevscore2 = 0;
+		}
+		else
+		{
+			prevhand = handnum - 1;
+			prevscore1 = hscore[1][prevhand];
+			prevscore2 = hscore[2][prevhand];
+		}
+		htricks[1][handnum] = points[1];
+		htricks[2][handnum] = points[2];
+		thisscore1 = hmeld[1][handnum] + points[1];
+		thisscore2 = hmeld[2][handnum] + points[2];
+		hset[handnum] = 0;
+		handout = "";
+		if (curbidder == 1 || curbidder == 3)
+		{
+			bidteam = "WE";
+			if (thisscore1 < curbid)
+			{
+				thisscore1 = 0 - curbid;
+				hset[handnum] = 1;
+				handout += "WE WERE SET";
+			}
+			else
+			{
+				handout += "WE MADE BID";
+			}
+		}
+		else
+		{
+			bidteam = "THEY"
+			if (thisscore2 < curbid)
+			{
+				thisscore2 = 0 - curbid;
+				hset[handnum] = 2;
+				handout += "THEY WERE SET";
+			}
+			else
+			{
+				handout += "THEY MADE BID";
+			}
+
+		}
+		newscore1 = prevscore1 + thisscore1;
+		newscore2 = prevscore2 + thisscore2;
+
+		gamewinner = 0;
+		winout = "";
+		if (newscore1 >= 121)
+		{
+			winteam = "WE";
+			gamewinner = 1;
+		}
+
+		if (newscore2 >= 121)
+		{
+			winteam = "THEY";
+			gamewinner = 2;
+		}
+		if (newscore1 >= 121 && newscore2 >= 121)
+		{
+			gamewinner = curbidder;
+			winteam = bidteam;
+		}
+		if (gamewinner > 0)
+		{
+			winout += " - " + winteam + " WIN!!";
+		}
+		if (points[1] == 0)
+		{
+			newscore1 = prevscore1;
+			gamewinner = 2;
+			winout = " - THEY RUBBED YOUR HEAD AND WIN!!!"
+		}
+		if (points[2] == 0)
+		{
+			gamewinner = 1;
+			newscore2 = prevscore2;
+			winout = " - WE RUBBED THEIR HEAD AND WIN!!!"
+		}
+
+		hscore[1][handnum] = newscore1;
+		hscore[2][handnum] = newscore2;
+		curscoreus = newscore1;
+		curscorethem = newscore2;
+
+		screenstr +='<div style="position:absolute; text-align: center; ';
+		screenstr +='top:230px; left:197px;  ';
+		screenstr +='width:600px; height:70px; ';
+		screenstr +='overflow:hidden; background-color:#00AA00;">';
+		screenstr +='<font face="arial black" font size="+2">';
+		screenstr += handout + winout;
+		screenstr += '</font>' + "\n" + '</div>'+ "\n";
+		
+		screenstr +='<div style="position:absolute; text-align: ' + talign + '; ';
+		screenstr +='top:470px; left:750px;  ';
+		screenstr +='width:200px; height:40px; ';
+		screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+		screenstr +='<font face="arial black" font size="+2">';
+		screenstr +='<a href="javascript:';
+		screenstr +='show_scoreboard();';
+		screenstr += '">Continue</a></font>' + "\n" + '</div>'+ "\n";
+
+		myscreendiv.innerHTML = screenstr;
+		return;
+	} 
+	while (curplayer != 1)
+	{
+		screenstr+=computer_pick();
+		myscreendiv.innerHTML = screenstr;
+		curplayer++;
+		if (curplayer == 5)
+		{
+			curplayer = 1;
+		}
+	}
+	// do human pick
+	prehumstr = screenstr;
+	screenstr += draw_human_hand("playacard");
+	myscreendiv.innerHTML = screenstr;
+}
+function get_comp_play()
+{
+	sent[curplayer][tricknum]="";
+	vsent[curplayer][tricknum]="";
+	if (numthistrick > 1)
+	{
+		follow();
+	}
+	if (numthistrick == 1 && tricknum == 1)
+	{
+		must_lead_trump();
+		win = curplayer;
+	}
+	if (numthistrick == 1 && tricknum != 1)
+	{
+		free_lead();
+		win = curplayer;
+	}
+	return thisplay;
+}
+function free_lead()
+{
+
+	var selsuit = 0;
+	var lowsuitcount = 12;
+	i =  curplayer;
+	vsent[i][tricknum] += "Have Free Lead\n";
+	vsent[i][tricknum] += "Can I Win The Trick?\n";
+	k = 1;
+	while (k <= 4)
+	{
+		if (k == seltrump && (tricknum + suitnum[i][k] < 13))
+		{
+			vsent[i][tricknum] += "Skipping Trump\n";
+			myalert(mnames[i] + ": skipping trump");
+			k++;
+			continue; // skip trump unless trump-tight
+		}
+		if (suitnum[i][k] == 0)
+		{
+			vsent[i][tricknum] += "Skipping " + suitnames[k] + " Because I Have None Left\n";
+			myalert(mnames[i] + ": skipping " + suitnames[k] + " because I have none left");
+			k++;
+			continue; // no cards
+		}
+		temp3 = hicard[k];
+		if (ahand[i][k][temp3] ==  0)
+		{
+			myalert(mnames[i] + ": skipping " + suitnames[k] + " because I do not have high card");
+			vsent[i][tricknum] += "Skipping " + suitnames[k] + " Because I Do Not Have The High Cardt\n";
+			k++;
+			continue; // skip trump unless trump-tight
+		}
+		if (suitnum[i][k] < lowsuitcount)
+		{
+			myalert(mnames[i] + ": considering " + suitnames[k] + " because I have the high card");
+			vsent[i][tricknum] += "Considering " + suitnames[k] + " Because I Have The High Card\n";
+			// Have boss in this suit
+			// Get rid of bare aces -- less chance of getting banged
+			lowsuitcount = suitnum[i][k]; // lowest suit count where player has boss
+			selsuit = k;   // suit with boss and lowest suit count
+		}
+		k++
+	}
+	if (selsuit != 0)
+	{
+		myalert(mnames[i] + ": chose " + suitnames[selsuit] + " because I have the high card and not many others");
+		vsent[i][tricknum] += "Chose " + suitnames[selsuit] + " Because I Have The High Card And Not Many Others\n";
+		// have a winner unless it gets banged 
+		sent[i][tricknum] += "-WIN";
+		doplay = hicard[selsuit];
+		k = doplay;
+		while (((ahand[i][selsuit][k] + played[selsuit][k]) == 2) && (ahand[i][selsuit][k] > 0)) 
+		{
+			doplay = k;
+			k--;
+		}
+		thisplay = (selsuit-1)*6 + doplay;
+		suitlead = selsuit;
+		hiplay = doplay;
+		if (suitlead == seltrump)
+		{
+			hitrump = doplay;
+		}
+		 		
+	}
+	else
+	{
+		thisplay = 0;
+		myalert(mnames[i] + ": OK - I Can't win");
+		vsent[i][tricknum] += "OK 0 I Can't Win\n";
+		// can not win trick
+		sent[i][tricknum] += "-NO WIN";
+		// did my partner have the lead yet?
+		// did they both? 
+		k = 1;
+		them = 0;
+		partgo = 0;
+		while (k <= 4)
+		{
+			if ((k == (curplayer + 2)) || (k == (curplayer - 2)))
+			{
+				partgo = didlead[k];
+			}
+			if (k != curplayer)
+			{
+				them += didlead[k];
+			}
+			k++;
+		} 
+
+		if (them == 2 && partgo == 0)
+		{
+			myalert(mnames[i] + ": Everybody had lead but partner, will try to feed partner");
+			vsent[i][tricknum] += "Everybody Had Lead But Partner, Will Try To Feed Partner\n";
+			// feed partner
+			feed = 0;
+			k = 1;
+			while (k <= 4)
+			{
+				if (k == seltrump || banging[0][k] == 1)
+				{
+					// skip trump or suits being banged
+					k++;
+					continue;
+				}
+				// find pssible partners aces in suits I have 
+				if (played[k][6] < 2 && suitnum[i][k] > 0)
+				{
+					myalert(mnames[i] + ": An Ace is out for " + suitnames[k] + " and I can lead " +  suitnames[k]);
+					vsent[i][tricknum] += "An Ace Is Out For " + suitnames[k] + " And I Can Lead " +  suitnames[k] + "\n";
+					feed = k;
+					break;
+				}
+				k++;
+			} 
+			if (feed > 0)
+			{
+				myalert(mnames[i] + ": Can feed my partner in " + suitnames[feed]);
+				vsent[i][tricknum] += "Can Feed My Partner In " + suitnames[feed] + "\n";
+				doplay = 0;
+				// try to get partners ace with a pointer
+				get_pointer(feed);
+				if (doplay == 0)
+				{
+					// OK no pointer
+					get_non_pointer(feed)
+				}
+				thisplay = (feed - 1)*6 + doplay;
+				suitlead = feed;
+				hiplay = doplay;
+				if (feed == seltrump)
+				{
+					hitrump = doplay;
+				} 		
+			}
+		}
+	}
+	if (thisplay == 0)
+	{
+		myalert(mnames[i] + ": Can't win and can't feed partner -- just throw something");
+		vsent[i][tricknum] += "Can't Win And Can't Feed Partner -- Just Throw Something\n";
+		// Partner did lead or one of them did not
+		// Don't take a chance
+		sent[i][tricknum] += "-NO FEED";
+		var selsuit = 0;
+		var hisuitcount =0;
+		k = 1;
+		while (k <= 4)
+		{
+			myalert(mnames[i] + ": Considering " + suitnames[k]);
+			vsent[i][tricknum] += "Considering " + suitnames[k] + "\n";
+			if ((k == seltrump) && (tricknum + suitnum[i][k] < 13))
+			{
+				myalert(mnames[i] + ": skipping trump");
+				vsent[i][tricknum] += "Skipping Trump\n";
+				// skip unless trump-tight
+				k++;
+				continue;
+			}
+			if (suitnum[i][k] > hisuitcount)
+			{
+				myalert(mnames[i] + ": " + suitnum[i][k] + " " + suitnames[k] + " is greater than " + hisuitcount + " still considering it");
+				vsent[i][tricknum] += suitnum[i][k] + " " + suitnames[k] + " Is Greater Than " + hisuitcount + " - Still Considering It\n";
+				selsuit = k;
+				hisuitcount = suitnum[i][k];
+			}
+			else
+			{
+				myalert(mnames[i] + ": " + suitnum[i][k] + " " + suitnames[k] + " is not greater than " + hisuitcount + " forget about it");
+				vsent[i][tricknum] += suitnum[i][k] + " " + suitnames[k] + " Is Not Greater Than " + hisuitcount + " - Forget About It\n";
+			}
+
+			k++;
+		}
+		if (selsuit != 0)
+		{
+			myalert(mnames[i] + ": selected " + suitnames[selsuit] + " - suit with most cards -- not trump");
+			vsent[i][tricknum] += "Selected " + suitnames[selsuit] + " - Suit With Most Carda -- Not Trump\n";
+			k = 1;
+			doplay = k;
+			//  OK selected suit (not trump) with most cards
+			//  Now find lowest card
+			while (k <= 6)
+			{
+				if (ahand[i][selsuit][k] > 0)
+				{
+					doplay = k;
+					break;
+				}
+				k++;
+			}
+			thisplay = (selsuit -1)*6+doplay;
+			suitlead = selsuit;
+			hiplay = doplay;
+			if (suitlead == seltrump)
+			{
+				hitrump = doplay;
+			}
+		}
+
+	}
+	if (thisplay == 0)
+	{
+		myalert(mnames[i] + ": OK - just play any card");
+		vsent[i][tricknum] += "OK - Just Play Any Card\n";
+		j = 1;
+		while (j <= 4)
+		{
+			k = 1;
+			while (k <= 6)
+			{
+				if (ahand[i][j][k] > 0)
+				{
+					thisplay = (j-1)*6 + k;
+					break;
+				}
+				k++;
+			}
+			j++;
+			if (thisplay > 0)
+			{
+				break;
+			}
+		}
+	}
+
+}				
+function get_pointer(thissuit)
+{
+	if (ahand[i][thissuit][5] > 0)
+	{
+		doplay = 5;
+	} 
+	if (ahand[i][thissuit][4] > 0)
+	{
+		doplay = 4;
+	}
+}
+function get_non_pointer(thissuit)
+{
+	var k = 1;
+	while (k <= 6)
+	{
+		if (ahand[i][thissuit][k] > 0)
+		{
+			doplay = k;
+			k = 7;
+		}
+		k++;
+	}
+}
+function must_lead_trump()
+{
+	i = curplayer;
+	vsent[i][tricknum] += "Must Lead Trump\n";
+	sent[curplayer][tricknum] += "MUST LEAD TRUMP";
+
+	if (ahand[curplayer][seltrump][6] > 0)
+	{
+		vsent[i][tricknum] += "I Have Boss Trump\n";
+		vsent[i][tricknum] += "Find Lowest Card That Will Win\n";
+		sent[curplayer][tricknum] += "-HAVE BOSS";
+		k=6;
+		doplay = 6;
+		while (ahand[i][seltrump][k] > 2)
+		{
+			doplay = k;
+			k--;
+		}		
+	}
+	else
+	{
+		vsent[i][tricknum] += "I Don't Have Boss Trump\n";
+		vsent[i][tricknum] += "Find Lowest Card In Trump\n";
+		sent[curplayer][tricknum] += "-NO BOSS";
+		k=1;
+		doplay = 1;
+		while (k <= 6)
+		{
+			if (ahand[i][seltrump][k] > 0)
+			{
+				doplay = k;
+				break;
+			}
+			k++;
+		}		
+	}
+	thisplay = ((seltrump - 1) * 6) + doplay;
+	suitlead = seltrump;
+	hiplay = doplay;
+	hitrump = doplay; 		
+}
+function follow()
+{
+	i = curplayer;
+	thisplay =  0;
+	sent[i][tricknum] += "FOLLOW";
+	vsent[i][tricknum] += "Do Not Have Lead\n";
+	if (suitlead == seltrump)
+	{
+		// Must Beat Trump When Lead
+		vsent[i][tricknum] += "Trump Was Lead\n";
+		trump_lead();
+	}
+	else
+	{
+		vsent[i][tricknum] += "Trump Was Not Lead\n";
+		other_lead();
+	}
+
+}
+function bang_it()
+{
+	i = curplayer;
+	sent[i][tricknum] += "-MUST BANG";
+	if (suitnum[i][seltrump] == 0)
+	{
+		vsent[i][tricknum] += "I Have No Trump\n";
+		doplay = 0;
+		thisplay = 0;
+		thissuit = 0; 
+		sent[i][tricknum] += "-NO TRUMP";
+		// can't win
+		if (((win - 2) == i) || ((win + 2) == i))
+		{
+			sent[i][tricknum] += "-DO POINT";
+			vsent[i][tricknum] += "We Are Winning - Do Point\n";
+			get_any_pointer();
+			if (thisplay ==  0)
+			{ 
+				sent[i][tricknum] += "-NO POINTERS LEFT";
+				vsent[i][tricknum] += "I Have No Pointers Left\n";
+			}
+		}
+		else
+		{
+			sent[i][tricknum] += "-DON'T POINT";
+			vsent[i][tricknum] += "Don't Point\n";
+		}
+		if (thisplay == 0)
+		{
+			// just find a non-pointer
+			vsent[i][tricknum] += "Get Any Card\n";
+			get_any_card();
+		}
+	} 
+	else
+	{
+		// have trump and must bang
+		vsent[i][tricknum] += "I Have Trump\n";
+		k = 6;
+		doplay = 0;
+		j = seltrump;
+		vsent[i][tricknum] += "Find Lowest Trump Card That Will Currently Win The Trick\n";
+		while (k > 0)
+		{
+			vsent[i][tricknum] += "Player has "  + ahand[i][j][k] + " " + cards[k] + "(s) of trump\n";
+			if (hitrump > 0)
+			{
+				vsent[i][tricknum] += "Current Highest played trump is  "  + cards[hitrump] + " of trump\n";
+			}
+			else
+			{
+				vsent[i][tricknum] += "No trump played yet\n";
+			}
+			
+			
+			if (ahand[i][j][k] > 0 && k > hitrump)
+			{
+				vsent[i][tricknum] += "I can win current trick with an "  + cards[k] + " of trump\n";
+				doplay = k;
+			}
+			k--;
+		}
+		if (doplay != 0)
+		{
+			vsent[i][tricknum] += "I Can Win - Will Take Chance That Noboy Trumps Higher\n";
+			sent[i][tricknum] += "-CAN WIN";
+			thisplay = (seltrump - 1) * 6 + doplay;
+			hitrump = doplay; 
+		}
+		else
+		{
+			vsent[i][tricknum] += "I Can't Win \n";
+			// can't win
+			sent[i][tricknum] += "-CAN'T WIN";
+			if ((i == (win + 2)) || (i == (win - 2)))
+			{
+				vsent[i][tricknum] += "Partner Winning - Do Point If We Can\n";
+				sent[i][tricknum] += "-DO POINT";
+				//alert("Do Point");
+				get_pointer(seltrump);
+				if (doplay == 0)
+				{
+					//alert("No Pointes");
+					vsent[i][tricknum] += "No Pointers In Trump\n";
+					sent[i][tricknum] += "-NO POINTERS LEFT";
+				}
+			}
+			else
+			{
+				// alert("Don't Point");
+				vsent[i][tricknum] += "Don't Point\n";
+				sent[i][tricknum] += "-DON'T POINT";
+			}
+			if (doplay == 0)
+			{
+				get_non_pointer(seltrump)
+			}
+			thisplay = (seltrump - 1) * 6 + doplay;
+		}
+	}	
+}
+function other_lead()
+{
+	// trump not lead
+	if (suitnum[i][suitlead] == 0)
+	{
+		banging[i][suitlead] = 1;
+		banging[0][suitlead] = 1;
+		// no cards in suit lead 
+		vsent[i][tricknum] += "Must Trunp -- No " + suitnames[suitlead] + " Left\n";
+		bang_it();
+
+	}
+	else
+	{
+		j = suitlead;
+		vsent[i][tricknum] += "Have " + suitnames[suitlead] + " Left - Can Follow Suit\n";
+		if (numthistrick == 4)
+		{
+			vsent[i][tricknum] += "I Have Last Play This Trick\n";
+			doplay = 0;
+			sent[i][tricknum] += "-LAST";
+			temp1 = hicard[j];
+			if (hiplay < hicard[j] && ahand[i][j][temp1] > 0  && wasbanged == 0)
+			{
+				vsent[i][tricknum] += "I Can Win Trick\n";
+				sent[i][tricknum] += "-CAN WIN";
+				k = hicard[j];
+				doplay = k;
+				while (k > 0)
+				{
+					if (ahand[i][j][k] > 0 && k > hiplay)
+					{
+						doplay = k;
+					}
+					k--;
+				}
+				thisplay = (j-1)*6+doplay;
+				win = i;
+				hiplay = doplay;
+			}
+			else
+			{
+				// CAN'T WIN
+				vsent[i][tricknum] += "I Can't Win Trick\n";
+				if (((win - 2) == i) || ((win + 2) == i))
+				{
+					vsent[i][tricknum] += "Partner Won Trick - Try To Throw Pointer\n";
+					sent[i][tricknum] += "-PARTNER WON-DO POINT";
+					get_pointer(j);
+					if (doplay == 0)
+					{
+						vsent[i][tricknum] += "No Pointers in " + suitnames[suitlead] + "\n";
+						sent[i][tricknum] += "-NO POINTERS";
+					}
+				}
+				else
+				{
+					vsent[i][tricknum] += "They Won Trick - Try To Throw Non-Pointer\n";
+					sent[i][tricknum] += "-WE LOST";
+				}
+				vsent[i][tricknum] += "Throw Lowest " + suitnames[suitlead] + "\n";			
+				k = 1;
+				while (k <= 6)
+				{
+					if (ahand[i][j][k] > 0)
+					{
+						doplay = k;
+						break;
+					}
+					k++;
+				}
+				thisplay = (j-1)*6+doplay;
+			
+			}
+		}
+		else
+		{
+			// Not Last
+			vsent[i][tricknum] += "Not Last To Play Card\n";			
+			sent[i][tricknum] += "-NOT LAST";
+			temp = hicard[j];
+			doplay = 0;
+			probbanged = 0;
+			if (banging[0][j] > 0)
+			{
+				probbbanged = 1;
+				vsent[i][tricknum] += "Probably Being Banged\n";
+			}
+			if ((suitnum[0][seltrump] - suitnum[i][seltrump]) == 0)
+			{
+				vsent[i][tricknum] += "I Have All The Trump - So Won't Be Banged\n";			
+				// current player only one with trump
+				probbanged =0;
+			}
+			if ((ahand[i][j][temp] > 0) && hiplay < temp && wasbanged != 1 && probbanged != 1)
+			{
+				// can win 
+				vsent[i][tricknum] += "Can Win\n";			
+				sent[i][tricknum] += "-CAN WIN";
+				k = temp;
+				doplay = k;
+				while (k > 0)
+				{
+					if (ahand[i][j][k] > 0 && (ahand[i][j][k] + played[i][j][k]) == 2)
+					{
+						doplay = k;
+					}
+					k--;
+				}
+				thisplay = (j-1)*6 + doplay;
+				hiplay = doplay;
+				win = i;					
+			}
+			else
+			{
+				doplay =  0;
+				sent[i][tricknum] += "-CAN'T WIN OR WILL PROBABLY BE BANGED";
+				vsent[i][tricknum] += "Can't Win or Will Prbably Be Or Was Banged\n";
+				if (((win - 2) == i) || ((win + 2) ==  i))
+				{
+					vsent[i][tricknum] += "Partner Winning -- Throw A Pointer\n";
+					sent[i][tricknum] += "-DO POINT";
+					get_pointer(j);
+					if (doplay == 0)
+					{ 
+						vsent[i][tricknum] += "No Pointers Left\n";			
+						sent[i][tricknum] += "-NO POINTERS LEFT";
+					}
+					else
+					{
+						thisplay = (j-1)*6 + doplay;
+					}
+
+				}
+				else
+				{
+					vsent[i][tricknum] += "We Aren't Winning -- Don't Throw A Pointer\n";			
+					sent[i][tricknum] += "-DON'T POINT";
+				}
+			}
+		}
+		if (thisplay == 0)
+		{
+			vsent[i][tricknum] += "Just Throw Lowest " + suitnames[suitlead] + "\n";
+			k = 1;
+			while (k <= 6)
+			{
+				if (ahand[i][j][k] > 0)
+				{
+					doplay = k;
+					break;
+				}
+				k++;
+			}
+			thisplay = (j-1)*6 + doplay;
+		}
+
+	}
+}
+function get_any_non_pointer()
+{		
+	var i = curplayer;		
+	var j = 1;
+	while (j <= 4)
+	{
+		var k = 1;
+		while (k <= 3)
+		{
+			if (ahand[i][j][k] > 0)
+			{
+				
+				thisplay = (j-1)*6 +k;
+				j = 5;
+				k = 4;
+			}
+			k++;
+		}
+		j++;
+	}
+}
+function get_any_pointer()
+{
+	var k = 4;
+	while (k <= 5)
+	{
+		var j = 1;
+		while (j <= 4)
+		{
+			if (ahand[i][j][k] > 0)
+			{
+				thisplay = (j-1)*6 +k;
+				j = 5;
+				k = 7;
+			}
+			j++;
+		}
+		k++;
+	}
+}
+function get_any_card()
+{
+	var k = 1;
+	while (k <= 6)
+	{
+		var j = 1;
+		while (j <= 4)
+		{
+			if (ahand[i][j][k] > 0)
+			{
+				thisplay = (j-1)*6 +k;
+				j = 5;
+				k = 7;
+			}
+			j++;
+		}
+		k++;
+	}
+}
+function trump_lead()
+{
+	sent[i][tricknum] += "-TRUMP IT";
+	myalert("In trump_lead");
+	if (suitnum[i][seltrump] == 0)
+	{
+		myalert("no trump");
+		sent[i][tricknum] += "-NO TRUMP";
+		vsent[i][tricknum] += "I Have No Trump\n";
+		if ((win != (i - 2)) && (win != (i + 2)))
+		{
+			myalert("We aren't winning");
+			sent[i][tricknum] += "-NO POINT";
+			vsent[i][tricknum] += "Not Winning Trick\n";
+			vsent[i][tricknum] += "Try To Throw A Non-Pointer\n";
+			thisplay = 0;
+			myalert("get_any_non_pointer");
+			get_any_non_pointer();
+			if (thisplay == 0)
+			{	
+				sent[i][tricknum] += "-ONLY POINTERS LEFT";
+				vsent[i][tricknum] += "Only Pointers Left\n";
+				get_any_card();
+			}
+		}
+		else
+		{
+			//  Do Point
+			sent[i][tricknum] += "-DO POINT";				
+			myalert("We are winning");
+			vsent[i][tricknum] += "Partner Winning Trick -- Try To Throw A Pointer\n";
+			get_any_pointer();
+			if (thisplay == 0)
+			{	
+				sent[i][tricknum] += "-NO POINTERS LEFT";
+				vsent[i][tricknum] += "No Pointers Left\n";
+				get_any_card();;
+				
+			}
+		}
+	}
+	else
+	{
+		// Have Trump Must Beat It
+		vsent[i][tricknum] += "I Have Trump\n";
+		j = seltrump;
+		k = hicard[j]
+		if (ahand[i][j][k] > 0 && hitrump < k)
+		{
+			sent[i][tricknum] += "-CAN WIN TRICK";
+			vsent[i][tricknum] += "I Can Win Trick\n";
+			doplay = k;
+			m = doplay;
+			while (m > 0)
+			{
+				if (((played[j][m] + ahand[i][j][m]) == 2) && (ahand[i][j][m] > 0) && m > hiplay)
+				{
+					doplay = m;
+				}
+				else
+				{
+					break;
+				}
+				m--;
+			}
+			thisplay = (seltrump - 1)*6 + doplay;
+			hitrump = doplay;
+			hiplay = doplay;
+			win = i;
+		}
+		else
+		{
+			j = seltrump;
+			doplay = 0;
+			sent[i][tricknum] += "-NO BOSS";
+			vsent[i][tricknum] += "Can't Win\n";
+			if ((i == (win - 2)) || (i == (win + 2)))
+			{
+				sent[i][tricknum] += "-DO POINT";
+				vsent[i][tricknum] += "Partner Is Winning, Try To Throw A Pointer\n";
+				dopoint = 1;
+			}
+			else
+			{
+				vsent[i][tricknum] += "Partner Is Not Winning, Try Not To Throw A Non-Pointer\n";
+				sent[i][tricknum] += "-DO NOT POINT";
+				dopoint = 0;
+			}
+			k = hitrump+1;
+			while (k <= 6)
+			{
+				if (ahand[i][j][k] > 0)
+				{
+					doplay = k;
+					if (k <= 3 && dopoint == 0)
+					{
+						break;
+					}
+					// beat trump with non-pointer
+					if (k > 3 && dopoint == 1)
+					{
+						break;
+					}
+					// beat trump with pointer 
+				}
+				k++;
+			}
+			if (doplay != 0)
+			{
+				vsent[i][tricknum] += "Must Beat Trump When Lead\n";
+				sent[i][tricknum] += "-BEAT TRUMP";
+			}
+			if (doplay == 0)
+			{
+				vsent[i][tricknum] += "Can't Beat Trump\n";
+				sent[i][tricknum] += "-CAN'T BEAT TRUMP";
+				// can't beat trump
+				k = 1;
+				if (dopoint)
+				{
+					if (ahand[i][j][5] > 0)
+					{
+						doplay = 5;
+					}
+					if (ahand[i][j][4] > 0)
+					{
+						doplay = 4;
+					}
+				}
+				if (doplay == 0)
+				{ 
+					vsent[i][tricknum] += "Can't Point with K or 10\n";
+					sent[i][tricknum] += "-CAN'T POINT";
+					vsent[i][tricknum] += "Throw Lowest Piece Of Trump\n";
+					sent[i][tricknum] += "-JUST THROW LOWEST";
+					k = 1;
+					while (k <= 6)
+					{
+						if (ahand[i][j][k] > 0)
+						{
+							doplay = k;
+							break;
+						}
+					k++;
+					}
+				}
+			}	
+			thisplay = (seltrump-1)*6 + doplay;
+		}
+	}
+}
+function computer_pick()
+{
+	
+	myscreendiv = document.getElementById("myscreen");
+	var thisplay = get_comp_play();
+	curplays[curplayer] = thisplay;
+	s = Math.floor((thisplay-1)/6)+1;
+	r = thisplay - (s-1)*6;
+	vsent[curplayer][tricknum] +="Playing " + cards[r] + " of " + suitnames[s] + "\n";
+
+	if (numthistrick == 1)
+	{
+		suitlead = s;
+		finalwinner = curplayer;
+	}
+	if (suitlead != s && s == seltrump)
+	{
+		wasbanged = 1;
+		banging[0][suitlead] = 1;
+		banging[curplayer][suitlead] = 1;
+		if (r > hitrump)
+		{
+			hitrump = r;
+			win = 1;
+		}
+		if (r > finalhitrump)
+		{
+			finalhitrump = r;
+			finalwinner = curplayer;
+		}	
+	}
+	if ((suitlead == s) && (r > finalhiplay) && (wasbanged == 0))
+	{
+		finalhiplay = r;
+		finalwinner = curplayer;
+		if (s == seltrump)
+		{
+			finalhitrump = r;
+		}
+	}
+	if ((suitlead == s) && (r > hiplay) && (wasbanged == 0))
+	{
+		hiplay =r;
+		win = 1;
+		if (s == seltrump)
+		{
+			hitrump = r;
+		}
+	}
+
+	win= finalwinner;
+	hiplay = finalhiplay;
+	hitrump = finalhitrump;
+	if (ahand[curplayer][s][r] < 1)
+	{
+		alert(mnames[curplayer] + " is playing a card that they do not have");
+	}
+	ahand[curplayer][s][r]--;
+	suitnum[curplayer][s]--;
+	suitnum[0][s]--;
+	tricks[curplayer][tricknum] = thisplay; 
+	played[s][r]++; 
+	myalert(sent[i][tricknum]);
+	//show_raw_hands();
+	if (numthistrick == 1)
+	{
+		finalwinner = curplayer;
+		finalhiplay = r;
+		if (s == seltrump)
+		{
+			finalhitrump = r;
+		}
+	} 
+	numthistrick++;
+	vpos = 170;
+	hpos = 480;
+	if (curplayer == 2)
+	{
+		vpos = 240;
+		hpos = 180;
+	}
+	if (curplayer == 4)
+	{
+		vpos = 240;
+		hpos = 770;
+	}
+	return draw_card(vpos,hpos,r,s);;
+
+}
+function human_plays_card(thiscard)
+{
+	myscreendiv = document.getElementById("myscreen");
+
+	thisplay = humsort[thiscard];
+	var s = Math.floor((thisplay-1)/6)+1;
+	var r = thisplay - (s-1)*6;
+	if (numthistrick == 1)
+	{
+		if (tricknum == 1 && s != seltrump)
+		{
+			alert("You Must Lead Trump On The First Trick");
+			return;
+		}
+	}
+	else
+	{			
+		if (s != suitlead)
+		{
+			if (suitnum[1][suitlead] > 0)
+			{
+				alert("Please Follow Suit");
+				return;
+			}
+			if (suitnum[1][seltrump] > 0 && s != seltrump)
+			{
+				alert("You Must Play Trump If You Can Not Follow Suit.");
+				return;
+			}
+		}
+		else
+		{
+			if (seltrump == suitlead )
+			{
+				canbeat = 0;
+				var k = finalhitrump + 1;
+				while (k < 7)
+				{
+					if (ahand[1][seltrump][k] > 0)
+					{
+						canbeat = 1;
+						break;
+					}
+					k++;
+				}
+				if (canbeat == 1 && r <= hitrump)
+				{
+					alert("You Must Beat Trump When It Is Lead.");
+					return;
+				}
+
+			}
+		}
+	}
+	// Human Played A Valid Card
+	humplayed[thiscard] = 1;
+	if (numthistrick ==1)
+	{
+		suitlead = s;
+		finalwinner = 1;
+		win = 1;
+	}
+	if (suitlead != s && s == seltrump)
+	{
+		wasbanged = 1;
+		banging[0][suitlead] = 1;
+		banging[curplayer][suitlead] = 1;
+		if (r > hitrump)
+		{
+			hitrump = r;
+			win = 1;
+		}
+		if (r > finalhitrump)
+		{
+			finalhitrump = r;
+			finalwinner = curplayer;
+		}	
+	}
+	if ((suitlead == s) && (r > finalhiplay) && (wasbanged == 0))
+	{
+		finalhiplay = r;
+		finalwinner = curplayer;
+		if (s == seltrump)
+		{
+			finalhitrump = r;
+		}
+	}
+	if ((suitlead == s) && (r > hiplay) && (wasbanged == 0))
+	{
+		hiplay =r;
+		win = 1;
+		if (s == seltrump)
+		{
+			hitrump = r;
+		}
+	}
+
+	ahand[curplayer][s][r]--;
+	suitnum[curplayer][s]--;
+	win= finalwinner;
+	hiplay = finalhiplay;
+	hitrump = finalhitrump;
+	suitnum[0][s]--;
+	tricks[curplayer][tricknum] = thisplay; 
+	played[s][r]++; 
+	curplays[1] = thisplay;
+	vpos = 300;
+	hpos = 480;
+	numthistrick++;
+	screenstr = prehumstr;
+
+	screenstr += draw_card(vpos,hpos,r,s);
+	screenstr += draw_human_hand("readonly");
+	posthumstr = screenstr;
+	myscreendiv.innerHTML = screenstr;
+	if (numthistrick >= 5)
+	{
+		next_trick();
+	}
+	else
+	{
+		more_computer_picks();
+	}
+}
+function more_computer_picks()
+{
+	myscreendiv = document.getElementById("myscreen");
+	screenstr = posthumstr;
+	myscreendiv.innerHTML = screenstr;
+	curplayer++;
+	while (numthistrick < 5)
+	{
+		screenstr+=computer_pick();
+		myscreendiv.innerHTML = screenstr;
+		curplayer++;
+		if (curplayer == 5)
+		{
+			curplayer = 1;
+		}
+	}
+	screenstr += draw_human_hand("readonly");
+	myscreendiv.innerHTML = screenstr;
+	if (trickdelay == 0)
+	{
+		screenstr +='<div style="position:absolute; text-align: ' + talign + '; ';
+		screenstr +='top:470px; left:750px;  ';
+		screenstr +='width:200px; height:40px; ';
+		screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+		screenstr +='<font face="arial black" font size="+2">';
+		screenstr +='<a href="javascript:next_trick();';
+		screenstr += '">Continue</a></font>' + "\n" + '</div>'+ "\n";
+	}
+	else
+	{
+		screenstr +='<div style="position:absolute; text-align: ' + talign + '; ';
+		screenstr +='top:470px; left:750px;  ';
+		screenstr +='width:200px; height:40px; ';
+		screenstr +='overflow:hidden; background-color:#00AA00;"> ';
+		screenstr +='<font face="arial black">';
+		screenstr += 'Clearing: ' + trickdelay + ' seconds ';
+		setTimeout("next_trick()", 1000*trickdelay);
+		screenstr +='<a href="javascript:next_trick();';
+		screenstr += "\n" + '</font></div>'+ "\n";
+	}		
+	myscreendiv = document.getElementById("myscreen");
+	myscreendiv.innerHTML = screenstr;
+//	pause(3);  // Pause did not work right in firefox
+//	next_trick();
+
+}
+function next_trick()
+{
+	var i = 1;
+	trickval = 0;
+	while (i <= 4)
+	{
+		temp= curplays[i];
+		s = Math.floor((temp-1)/6)+1;
+		r = temp - (s-1)*6;
+		if (r  > 3)
+		{
+			trickval++;
+		}
+		i++;	
+	}
+	j = 1;
+	alstr = "";
+	while (j <= 4)
+	{
+		hicard[j] = 0;
+		hirank = 0;
+		i = 1;
+		while (i <= 4)
+		{
+			k=1;
+			while (k <= 6)
+			{
+				if (ahand[i][j][k] > 0)
+				{
+					if (k > hirank)
+					{
+						hirank = k;
+					}
+				}
+				k++;
+			}
+			i++;
+		}
+		hicard[j] = hirank;
+		alstr += suits[j] + ": " + hicard[j] + "\n";
+		j++;
+	}
+//	myalert(alstr);
+	if (tricknum == 12)
+	{
+		trickval++;
+	}
+	if (finalwinner == 1 || finalwinner == 3)
+	{
+		points[1] += trickval;
+	}			
+	if (finalwinner == 2 || finalwinner == 4)
+	{
+		points[2] += trickval;
+	}			
+	tricknum++;
+	numthistrick = 1;
+	wasbanged = 0;
+	curplayer = finalwinner;
+	hlead[tricknum] = curplayer;
+	didlead[curplayer] = 1;
+	play_all_tricks();
+}	
+
+function humandidplay()
+{
+	curplayer = 2;
+
+}
+function pause(seconds) 
+{
+	var dt = new Date();
+	milliseconds = 1000 * seconds;
+	while ((new Date()) - dt <= milliseconds) { /* Do nothing */ }
+}
+	
+function increase_human_bid()
+{
+	humanbid++;
+	bidbutton = document.getElementById("humbidbtton");
+	bidbutton.value = "BID " + humanbid;
+}
+function decrease_human_bid(lobid)
+{
+	humanbid--;
+	if (humanbid < lobid)
+	{
+		humanbid = lobid;
+	}
+	bidbutton = document.getElementById("humbidbtton");
+	bidbutton.value = "BID " + humanbid;
+}
+function draw_players()
+{
+	var namestr = '';
+	vpos = 480; 
+	namestr +='<div style="position:absolute;  ';
+	namestr +='top:' + vpos + 'px; left:425px; ';
+	namestr +='width:160px; height:30px; ';
+	namestr +='overflow:hidden; text-align: center; background-color:#00AA00;"> ';
+	namestr +='<font face="arial black" font size="+2">';
+	namestr +=mnames[1];
+	namestr +='</font>' + "\n" + '</div>'+ "\n";
+
+	vpos = 10; 
+	namestr +='<div style="position:absolute;  ';
+	namestr +='top:' + vpos + 'px; left:425px; ';
+	namestr +='width:160px; height:30px; ';
+	namestr +='overflow:hidden; text-align: center; background-color:#00AA00;"> ';
+	namestr +='<font face="arial black" font size="+2">';
+	namestr +=mnames[3];
+	namestr +='</font>' + "\n" + '</div>'+ "\n";
+
+	if (dealer == 1)
+	{
+		
+		vpos = 450; 
+		namestr +='<div style="position:absolute;  ';
+		namestr +='top:' + vpos + 'px; left:425px; ';
+		namestr +='width:160px; height:30px; ';
+		namestr +='overflow:hidden; text-align: center; background-color:#00AA00;"> ';
+		namestr +='<font face="arial black" font size="+2">';
+		namestr +="DEALER";
+		namestr +='</font>' + "\n" + '</div>'+ "\n";
+	}
+
+	if (dealer == 3)
+	{
+		
+		vpos = 40; 
+		namestr +='<div style="position:absolute; ';
+		namestr +='top:' + vpos + 'px; left:425px; ';
+		namestr +='width:160px; height:30px; ';
+		namestr +='overflow:hidden; text-align: center; background-color:#00AA00;"> ';
+		namestr +='<font face="arial black" font size="+2">';
+		namestr +="DEALER";
+		namestr +='</font>' + "\n" + '</div>'+ "\n";
+	}
+
+	var tname2 = mnames[2];
+	var tname4 = mnames[4];
+	var dealstr = "DEALER";
+	diff2 = 0;
+	if  (tname2.length < 4)
+	{
+		diff2 = 30;
+	}
+	diff4 = 0;
+	if  (tname4.length < 4)
+	{
+		diff4 = 30;
+	}
+
+	var i = 0;
+	hpos1 = 15;
+	vpos = 195;
+
+	namestr +='<div style="position:absolute;    ';
+	namestr +='top:' + (vpos+diff2) + 'px; left:' + hpos1 +'px; ';
+	namestr +='width:30px; height:160px; line-height: 125%; ';
+	namestr +='overflow:hidden; text-align: center; background-color:#00AA00;"> ';
+	namestr +='<font face="arial black" font size="+2">';
+	i = 0;
+	
+	while (i < tname2.length)
+	{
+		namestr += tname2.substring(i,i+1);
+		namestr += "<br />";
+		i++;
+	}
+
+	namestr +='</font>' + "\n" + '</div>'+ "\n";
+
+
+	hpos2 = 955;
+	namestr +='<div style="position:absolute;  ';
+	namestr +='top:' + (vpos+diff4) + 'px; left:' + hpos2 +'px; ';
+	namestr +='width:30px; height:160px; line-height: 125%; ';
+	namestr +='overflow:hidden; text-align: center; background-color:#00AA00;"> ';
+	namestr +='<font face="arial black" font size="+2">';
+	i = 0;
+	
+	while (i <= tname4.length)
+	{
+		namestr += tname4.substring(i,i+1);
+		namestr += "<br />";
+		i++;
+	}
+
+	namestr +='</font>' + "\n" + '</div>'+ "\n";
+
+	if (dealer == 2)
+	{
+
+		namestr +='<div style="position:absolute;    ';
+		namestr +='top:' + vpos + 'px; left:' + (hpos1+30) +'px; ';
+		namestr +='width:30px; height:160px; line-height: 125%; ';
+		namestr +='overflow:hidden; text-align: center; background-color:#00AA00;"> ';
+		namestr +='<font face="arial black" font size="+2">';
+		i = 0;
+	
+		while (i <= dealstr.length)
+		{
+			namestr += dealstr.substring(i,i+1);
+			namestr += "<br />";
+			i++;
+		}
+
+		namestr +='</font>' + "\n" + '</div>'+ "\n";
+	}
+	if (dealer == 4)
+	{
+
+		namestr +='<div style="position:absolute;   ';
+		namestr +='top:' + vpos + 'px; left:' + (hpos2-30) +'px; ';
+		namestr +='width:30px; height:160px; line-height: 125%; ';
+		namestr +='overflow:hidden; text-align: center; background-color:#00AA00;"> ';
+		namestr +='<font face="arial black" font size="+2">';
+		i = 0;
+	
+		while (i <= dealstr.length)
+		{
+			namestr += dealstr.substring(i,i+1);
+			namestr += "<br />";
+			i++;
+		}
+
+		namestr +='</font>' + "\n" + '</div>'+ "\n";
+	}
+	
+	return namestr;
+}
+function draw_decks()
+{
+	vpos = 95;
+	hpos = 485;
+	var deckstr = "";
+	deckstr += '<div style="position:absolute; border-style: solid; border-color:black; ';
+	deckstr += 'border-width:2px; top:' + vpos + 'px; left:' + hpos + 'px; ';
+	deckstr += 'width:' + cw + 'px; height:' + ch + 'px; ';
+	deckstr += 'overflow:hidden; background-color:black;">' + "\n" + '</div>';
+	deckstr += "\n";
+	vpos = 90;
+	hpos = 480;
+	deckstr += '<div style="position:absolute;  border-style: solid; border-color:white; ';
+	deckstr += 'border-width:2px; top:' + vpos + 'px; left:' + hpos + 'px; ';
+	deckstr += 'width:' + cw + 'px; height:' + ch + 'px; ';
+	deckstr += 'overflow:hidden; background-color:red;">' + "\n" + '</div>';
+	deckstr += "\n";
+
+
+
+	vpos = 240;
+	hpos = 105;
+	deckstr += '<div style="position:absolute; border-style: solid; border-color:black; ';
+	deckstr += 'border-width:2px; top:' + vpos + 'px; left:' + hpos + 'px; ';
+	deckstr += 'width:' + cw + 'px; height:' + ch + 'px; ';
+	deckstr += 'overflow:hidden; background-color:black;">' + "\n" + '</div>'+ "\n";
+	deckstr += "\n";
+	vpos = 235;
+	hpos = 100;
+	deckstr += '<div style="position:absolute;  border-style: solid; border-color:white; ';
+	deckstr += 'border-width:2px; top:' + vpos + 'px; left:' + hpos + 'px; ';
+	deckstr += 'width:' + cw + 'px; height:' + ch + 'px; ';
+	deckstr += 'overflow:hidden; background-color:red;">' + "\n" + '</div>'+ "\n";
+	deckstr += "\n";
+
+	vpos = 240;
+	hpos = 855;
+	deckstr += '<div style="position:absolute; border-style: solid; border-color:black; ';
+	deckstr += 'border-width:2px; top:' + vpos + 'px; left:' + hpos + 'px; ';
+	deckstr += 'width:' + cw + 'px; height:' + ch + 'px; ';
+	deckstr += 'overflow:hidden; background-color:black;">' + "\n" + '</div>'+ "\n";
+	deckstr += "\n";
+	vpos = 235;
+	hpos = 850;
+	deckstr += '<div style="position:absolute;  border-style: solid; border-color:white; ';
+	deckstr += 'border-width:2px; top:' + vpos + 'px; left:' + hpos + 'px; ';
+	deckstr += 'width:' + cw + 'px; height:' + ch + 'px; ';
+	deckstr += 'overflow:hidden; background-color:red;">' + "\n" + '</div>'+ "\n";
+	deckstr += "\n";
+
+
+	return deckstr;
+}
+function show_raw_hands()
+{
+	var tmpstr = "";
+	var i = 1;
+	while(i <= 4)
+	{
+		var j = 1;
+		while (j <= 4)
+		{
+			var k = 1;
+			while (k <= 6)
+			{
+				tmpstr += "ahand[" + i + "][" + j + "][" + k + "] = " + ahand[i][j][k] + "\n";
+				k++;
+			}
+			j++;
+		}
+		myalert(tmpstr);
+		tmpstr = "";
+		i++;
+	}
+	tmpstr = "";
+	i = 1;
+	while(i <= 4)
+	{
+		tmpstr += i;
+		j = 1;
+		while (j <= 12)
+		{
+			tmpstr += "-" + shand[i][j];
+			j++;
+		}
+		tmpstr += "\n";
+		i++;
+	}
+	myalert(tmpstr);
+
+}
+function show_deck()
+{
+	var tmpstr = "";
+	var i = 1;
+	while (i <= 48)
+	{
+		tmpstr += "i: " + i + "shuff[i]: " + shuff[i] + "\n";
+		i++;
+	}
+	myalert(tmpstr);
+}
+function enter_seed()
+{
+	screenstr = '<div style="position:absolute;  z-index:1; left:105px; top:125px;  width: 780px; ';
+	screenstr += ' text-align:center;">';
+	screenstr +='<font face="arial black" font size="+2"><form name="dummy">';
+	screenstr += '<br />Enter A Specific Seed Number For The Random<br />Number Generator. ';
+	screenstr += 'This Will Allow You Or A Friend<br /> To Play The Same Game (Enter Same Seed).<br /><br />';
+	screenstr += 'Leave Blank For A Pseudo-Random Game.<br /><br />';
+	screenstr += 'Enter Seed (Number): <input name="seedentry" type="text" MAXLENGTH="7"> &nbsp; ';
+	
+	screenstr += '<input style="font-weight: bold; text-align: center;" type="button" '; 
+	screenstr += ' value="Enter Seed" onClick="set_seed();"><br /><br /></form>';
+	screenstr += '</font>' + "\n" + '</div>'+ "\n";
+	myscreendiv = document.getElementById("myscreen");
+	myscreendiv.innerHTML = cbstr + screenstr;
+	document.dummy.seedentry.focus();
+}	
+function set_seed()
+{
+	tmpstr = document.dummy.seedentry.value;
+	tmpnum = parseInt(tmpstr);
+	if (!isNaN(tmpnum))
+	{
+		seed = tmpnum;
+	}
+	show_menu();
+}
+function enter_name()
+{
+	screenstr = '<div style="position:absolute;  z-index:1; left:105px; top:125px;  width: 780px; ';
+	screenstr += ' text-align:center;">';
+	screenstr +='<font face="arial black" font size="+2"><form name="dummy">';
+	screenstr += '<br />Enter Name (max 7 characters) ';
+	screenstr += '<input name="nameentry" type="text" MAXLENGTH="7"><br /><br /> ';
+	screenstr += '<input name="suitoutline" type="checkbox"> Use Suit Outline (smome android phones  )<br /><br /> ';
+	
+	screenstr += 'Select Delay For Clearing Tricks: ';
+	screenstr += '<select name="delayentry">';
+	var i = 0;
+	while (i < trickdelaynumopts)
+	{
+		seltext = " ";
+		if (trickdelayopts[i] == trickdelay)
+		{
+			seltext = " selected ";
+		}
+		screenstr += '<option '  + seltext + ' value="'  + trickdelayopts[i];
+  		screenstr += '">' + trickdelaylabels[i] + '</option>';
+		i++;
+	}
+	screenstr += '</select><br /><br />';
+	screenstr += '<input style="font-weight: bold;" type="button" '; 
+	screenstr += ' value="Continue " onClick="set_name();"><br />';
+	screenstr += '</form>';
+	screenstr += '</font>' + "\n" + '</div>'+ "\n";
+	myscreendiv = document.getElementById("myscreen");
+	myscreendiv.innerHTML = cbstr + screenstr;
+	document.dummy.nameentry.focus();
+}	
+function set_name()
+{
+	var prevsuitoutline = suitoutline;
+	tmpstr = document.dummy.nameentry.value;
+	if (tmpstr.length > 0)
+	{
+		name = tmpstr.substr(0,7);
+	}
+	suitoutline = 0;
+	if (document.dummy.suitoutline.checked)
+	{
+		suitoutline = 1;
+	}
+	if (suitoutline)
+	{
+	// My android phone rendering filled (black) suits strangely -- on others it is fine
+		suits[1] = "&#9828;";
+		suits[2] = "&#9825;";
+		suits[3] = "&#9831;";
+		suits[4] = "&#9826;";
+	}
+	else
+	{
+		suits[1] = "&spades;";
+		suits[2] = "&hearts;";
+		suits[3] = "&clubs;";
+		suits[4] = "&diams;";
+	}
+	if (suitoutline != prevsuitoutline)
+	{
+		draw_borders();
+	}
+	
+	var selindex = document.dummy.delayentry.selectedIndex;
+	trickdelay = document.dummy.delayentry.options[selindex].value;
+//	alert("name: " + name);
+//	alert("trickdelay: "  + trickdelay);
+	first_game();
+}
+function draw_card(vert,hor,rank,suit,blankit,action,objective,dohilight)
+{
+	if (!blankit)
+	{
+		var blankit = 0;
+	}
+	if (!action)
+	{
+		var action = "readonly";
+	}
+	if (!objective)
+	{
+		var objective = 0;
+	}
+	if (!dohilight)
+	{
+		var dohilight = 0;
+	}
+	var bgcolor = "#00AA00";
+	if (dohilight == 1)
+	{
+		bgcolor = "#1FD0D0";
+		myalert("highight");
+	}
+	var cardcolor = "black";
+	if ((suit == 2) || (suit == 4))
+	{
+		cardcolor = "red";
+	}
+	
+	var thissuit = suits[suit];
+	var thisrank = cards[rank];
+	if (blankit == 1)
+	{
+		thissuit = "";
+		thisrank = "";
+	}
+	var thisonclick1 = "";
+	var thisonclick2 = "";
+	var hoverstr = "";
+	if ((action == "playacard") && (blankit != 1))
+	{
+		thisonclick1 = '<a style="text-decoration: none; " ';
+		thisonclick1 += ' href="javascript:human_plays_card(' + objective + ');">';
+		thisonclick2 = '</a>';
+	} 
+	if ((action == "showtrick") && (blankit != 1))
+	{
+		thisonclick1 = '<a style="text-decoration: none; " ';
+		thisonclick1 += ' href="javascript:why_this_card(' + objective + ');">';
+		thisonclick2 = '</a>';
+	} 
+	var tmpstr = thisonclick1 + '<div style="position:absolute;  z-index:1;  border-style: solid; ' ;
+	tmpstr += ' border-color:black; ';
+	tmpstr += ' border-width:2px; top:' + vert + 'px; left:' + hor + 'px; ';
+	tmpstr += 'width:' + cw + 'px; height:' + ch + 'px; '
+	tmpstr += 'overflow:hidden; background-color: ' + bgcolor + ';" >';
+	tmpstr += "\n";
+	tmpstr += '<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; ';
+	tmpstr += 'text-align: center; background-color: ' + bgcolor + ';" >';
+	tmpstr += '<font face="arial black" ';
+	tmpstr += 'color="' + cardcolor + '" size="+2" style="line-height:100%">' + thisrank + '<br /><font ';
+	tmpstr += 'size="+3"><b>' + thissuit + '</b></font></font>';
+	tmpstr += "\n" + '</div>' + "\n" + '</div>' + thisonclick2;
+	return tmpstr;
+}
+</script>
+<script>
+function trim(stringToTrim) {
+	return stringToTrim.replace(/^\s+|\s+$/g,"");
+}
+function ltrim(stringToTrim) {
+	return stringToTrim.replace(/^\s+/,"");
+}
+function rtrim(stringToTrim) {
+	return stringToTrim.replace(/\s+$/,"");
+}
+</script>
+<title>Single Deck Pinochle - By Karl J. Smalley - v3.b:2016</title>
+</head>
+<body>
+<div id="myscreen" style="position: absolute; top: 0px; left: 0px;"><div id="cbstr" style="position:absolute; top:5px; left:10px; width:985px; height:520px;  border-style: solid;  border-width: 2px; overflow:hidden; background-color:#00AA00;">
+</div>
+<div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:10px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:57px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:104px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:151px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:198px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:245px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:292px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:339px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:386px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:433px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:480px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:527px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:574px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:621px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:668px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:715px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:762px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:809px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:856px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:903px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:5px; left:950px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:10px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:57px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:104px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:151px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:198px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:245px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:292px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:339px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:386px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:433px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:480px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:527px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:574px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:621px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:668px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:715px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:762px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:809px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:856px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:903px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:63px; left:950px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:121px; left:10px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:121px; left:57px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:121px; left:903px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:121px; left:950px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:179px; left:10px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:179px; left:57px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:179px; left:903px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:179px; left:950px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:237px; left:10px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:237px; left:57px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:237px; left:903px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:237px; left:950px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:295px; left:10px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:295px; left:57px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:295px; left:903px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:295px; left:950px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:353px; left:10px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:353px; left:57px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:353px; left:903px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:353px; left:950px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:10px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:57px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:104px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:151px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:198px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:245px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:292px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:339px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:386px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:433px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:480px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:527px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:574px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:621px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:668px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:715px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:762px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:809px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:856px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:903px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:411px; left:950px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:10px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:57px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:104px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:151px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:198px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:245px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:292px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:339px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:386px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:433px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:480px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:527px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:574px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:621px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:668px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:715px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:762px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:809px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:856px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:903px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="black" face="arial black">Q<br><font size="+3"><b>&#9824;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1;  border-style: solid;  border-color:black;  border-width:2px; top:469px; left:950px; width:45px; height:56px; overflow:hidden; background-color: #00AA00;">
+<div style="width:43px; z-index:1;  height:48px; overflow:hidden; margin-top: 2px; text-align: center; background-color: #00AA00;"><font style="line-height:100%" size="+2" color="red" face="arial black">J<br><font size="+3"><b>&#9830;</b></font></font>
+</div>
+</div><div style="position:absolute;  z-index:1; left:105px; top:150px;  width: 780px;  text-align:center;"><font size="+2" face="arial black">Single Deck Pinochle<br><br> By: Karl J. Smalley<br> (v3.b:2016, v3.a:2015, v3:2014, v2:2012, v1:2010) <br><br>Based On A BASICA Program I Wrote In 1992<br><a href="javascript:show_menu();">Close Credits</a></font>
+</div>
+</div>
+<script>show_credits();</script>
+<script type="text/javascript"><!--
+function SiteStats_6900(){
+var t=new Date();
+var u='http://swffl.50megs.com/cgi-bin/sitestats.gif?p='+escape(location.href)+';r='+escape(document.referrer)+';t='+t.getTime();
+var I=new Image(1,1);  I.src=u;
+ }
+ SiteStats_6900();
+//--></script><noscript>&lt;img src="http://swffl.50megs.com/cgi-bin/sitestats.gif?p=http%3A%2F%2Fswffl.50megs.com%2Fpinochle.html;r=-;t=6900;" width=1 height=1 alt="sitestats"&gt;</noscript>
+
+
+<script type="text/javascript"><!--
+function SiteStats_7927(){
+var t=new Date();
+var u='http://swffl.50megs.com/cgi-bin/sitestats.gif?p='+escape(location.href)+';r='+escape(document.referrer)+';t='+t.getTime();
+var I=new Image(1,1);  I.src=u;
+ }
+ SiteStats_7927();
+//--></script><noscript><img src="http://swffl.50megs.com/cgi-bin/sitestats.gif?p=http%3A%2F%2Fswffl.50megs.com%2Fpinochle.html;r=-;t=7927;" width=1 height=1 alt="sitestats"></noscript>
+</body></html>
