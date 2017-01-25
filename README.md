@@ -9,3 +9,5 @@ are also allowed but not implemented here.
 Renigging is enforced, but not possible here unless I have a bug.
 Each player bids once starting with player to left of dealer.
 Minimum bid is 21 (dealer gets bid for 20 if it is left on him/her). 
+
+The game is currently hosted at http://swffl.50megs.com/pinochle.html.

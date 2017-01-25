@@ -10,26 +10,26 @@
 //70 REM *                                                                    *
 //80 REM **********************************************************************
 // Above are the first few lines from the 1992 BASIC version
-// Rewritten in javascript, html & CSS in 2010 (Version 2 released in 2012, 
-// Version 3 in 2013, 3.a in 2015, 3.b in 2016) 
+// Rewritten in javascript, html & CSS in 2010 (Version 2 released in 2012,
+// Version 3 in 2013, 3.a in 2015, 3.b in 2016)
 //
 // This version of single-deck partners pinochle is quite literally my Dad's version.
-// It is similar to a lot of other versions, but it has it's own little quirks.
+// It is similar to a lot of other versions, but it has its own little quirks.
 // There is no card passing. Talking the board is illegal (but irrelevant here).
 // Signal bidding is allowed, but I have not implemented it here.
 // Signal tricks (non-pointer of suit you are strong in when you fall off trump)
 //    are also allowed but not implemented here.
 // Renigging is enforced, but not possible here unless I have a bug.
 // Each player bids once starting with player to left of dealer.
-// Minimum bid is 21 (dealer gets bid for 20 if it is left on him/her). 
+// Minimum bid is 21 (dealer gets bid for 20 if it is left on him/her).
 //
 // It does not use the 10 point system. A's, 10's and K's are worth one point
 // There is one point for taking last trick. If a team does not pull a least one
 // trick, they had their heads rubbed and lose the game.
-//  
+//
 // A lot of the above is semi-standard except the save and weight bids.
 //
-// Melding is where we go off the books. Below are the rules for scoring meld. 
+// Melding is where we go off the books. Below are the rules for scoring meld.
 // Runs In Trump = 15, Runs Not In Trump =  0   (And Are A Crying Shame)
 // Aces   Around = 10, Double Aces   Around = 20
 // Kings  Around =  8, Double Kings  Around = 16
@@ -37,20 +37,20 @@
 // Jacks  Around =  4, Double Jacks  Around =  8
 // Pinochle = 4, Double Pinochle = 8
 // Nines Of Trump = 1 each (The Dix)
-// Marriages = 2, Marriages In Trump = 4 (unless they are already used in a run) 
-// A Roundhouse = 24 
+// Marriages = 2, Marriages In Trump = 4 (unless they are already used in a run)
+// A Roundhouse = 24
 // A Roundhouse = 20 (If The Queen and King Of Trump Are In A Run)
 //
-// Most of the quirks (double stuff & head rub rule) are less likely, so 
-// it may not make a difference. The most common one to occur is double pinochle. 
+// Most of the quirks (double stuff & head rub rule) are less likely, so
+// it may not make a difference. The most common one to occur is double pinochle.
 //
 //
-// Version 2 fixed a bug with dealer bids (only has to bed 1 more to win )
-// Version 2 allowed for an optiomal timer to clear tricks instead of hitting the continue link
+// Version 2 Fixed a bug with dealer bids (only has to bid 1 more to win )
+// Version 2 Allowed for an optimal timer to clear tricks instead of hitting the continue link
 // Version 3 - Bug fixes
 // Version 3.a - Changed the way the computer plays trump when it is not lead.
-// Version 3.b - Do not point partner with ace, in bidder-up or out raise bid an extra 5 points, 
-//     when oponnent dealt and are above 95 and computer can not go out, DO NOT BID.
+// Version 3.b - Do not point partner with ace, in bidder-up or out raise bid an extra 5 points,
+//     when opponent dealt and are above 95 and computer can not go out, DO NOT BID.
 // Version 4 (hopefully) use a combination of cookies/DHTML local storage to save retrieve settings & statistics
 
 // Some code was borrowed off the internet -- Psueudo-Random Number Generator, Trim Functions
@@ -80,7 +80,7 @@ function rand(number) {
 // end central randomizer. -->
 </script>
 <script language="JavaScript">
-today=new Date(); 	  	// use clock to seed pseudo-randomnumber genrator by default
+today=new Date(); 	  	// use clock to seed pseudo-random number generator by default
 seed=today.getTime();
 trickdelay = 2;		// if a non-human plays last card, how long before we clear the cards, 0 for unlimited
 trickdelayopts = new Array();
@@ -101,20 +101,20 @@ trickdelayopts[4] = 15;
 trickdelayopts[5] = 20;
 trickdelayopts[6] = 25;
 
-debugmode=0; 			// If on(1) you will hundreds of alerts per hand 
-name="Bozo";			// If you don't want me to call you Bozo -- Type in your name when asked 
-handnum=0;			// Keeps track of the current handnumber 
-gamewinner=0;			// Set to 1 if we win, 2 if they win, 0 otherwise 
+debugmode=0; 			// If on(1) you will hundreds of alerts per hand
+name="Bozo";			// If you don't want me to call you Bozo -- Type in your name when asked
+handnum=0;			// Keeps track of the current handnumber
+gamewinner=0;			// Set to 1 if we win, 2 if they win, 0 otherwise
 dealer = 0;
 shand = new Array();		// Hand sorted by suit && rank with suit && rank combined
 humsort = new Array();		// Human Hand sorted by suit (trump first) && rank with suit && rank combined
-ahand = new Array();		// Three Dimensional Array [player][suit][rank] 
+ahand = new Array();		// Three Dimensional Array [player][suit][rank]
 				// Keeps track of cards left in hand [player=0] keeps track of all cards not played
 pahand = new Array();		// a copy of ahand as dealt
 phand = new Array();		// a copy of hand as dealt
 trump = new Array();		// preferred trump for each player
 bid = new Array();		// calculated bid for each suit for each player
-meld = new Array();		// meld for each player for each suit 
+meld = new Array();		// meld for each player for each suit
 power = new Array();		// power calculation for each suit for each player
 runs = new Array();		// number of runs in each suit for each player
 pin = new Array();		// number of pinochles for each player
@@ -129,25 +129,25 @@ curplays = new Array();		// current card played this trick for each player
 didlead = new Array();		// did each player have the lead this hand
 banging = new Array();		// for each player -- who is banging which suit
 suitnum = new Array();		// number of cards in each suit for each player
-aces = new Array();		// number of aces in each sit freach player 
-hlead = new Array();		// Who had lead freach trick in current hand 
+aces = new Array();		// number of aces in each sit freach player
+hlead = new Array();		// Who had lead freach trick in current hand
 hmeld= new Array();		// meld foreach team for each hand
 htricks = new Array();		// trick count foreach team foreach hand
 hscore = new Array();		// score for each team after each hand
-hibidder = new Array();		// who bid on each hand 
+hibidder = new Array();		// who bid on each hand
 hbidder = new Array();		// who bid on each hand
 humplayed = new Array();	// what card a human player has left
-hibid = new Array();		// high bid for each player 
+hibid = new Array();		// high bid for each player
 hbid = new Array();		// final bid for each hand
 points = new Array();		// not sure
 hset = new Array();		// was bidder set for each hand
-played = new Array();		// what cards were played this trick by suit and  rank 
+played = new Array();		// what cards were played this trick by suit and  rank
 hicard = new Array();		// highest remaining card in each suit
 splayed = new Array();		// suits played this trick
 tricks = new Array();		// all cards played by player and tricknum
 winners = new Array;		// trick winner by tricknmber
-sent = new Array();		// message about how computer decided to play a card 
-vsent = new Array();		// verbose message about how computer decided to play a card 
+sent = new Array();		// message about how computer decided to play a card
+vsent = new Array();		// verbose message about how computer decided to play a card
 curscoreus = 0; 			// Human team score
 curscorethem = 0;			// Computer team score
 uporout = 0;				// Both teams are over 95 -- Bidder up or out (Technically 100 but 95 is better in practice)
@@ -193,7 +193,7 @@ while (i <= 4)
 
 cards[1] = "9";
 cards[2] = "J";
-cards[3] = "Q"; 
+cards[3] = "Q";
 cards[4] = "K";
 cards[5] = "10";
 cards[6] = "A";
@@ -236,7 +236,7 @@ bordersadded = 1;
 if (navigator.appName.substr(0,4) != "Nets")
 {
 	bordersadded = 0;
-} 
+}
 if (bordersadded)
 {
 	cw = 45;
@@ -277,7 +277,7 @@ creditsstr += '<a href="javascript:show_menu();">Close Credits</a>';
 creditsstr += '</font>' + "\n" + '</div>'+ "\n";
 function draw_borders()
 {
-//  Draw Borders of Alternating Jacks of Diamonds and Queens of Spades 
+//  Draw Borders of Alternating Jacks of Diamonds and Queens of Spades
 	j = 1;
 	curcard = "j";
 	while (j < 10)
@@ -298,17 +298,17 @@ function draw_borders()
 				{
 					curcard = "j";
 				}
-			} 
+			}
 			vpos = (j-1)*58+5;
 			hpos=(i-1)*47+10;
 			if (curcard == "j")
-			{ 
+			{
 				r = 2;
 				s = 4;
 				curcard="q";
 			}
 			else
-			{ 
+			{
 				r = 3;
 				s = 1;
 				curcard="j";
@@ -347,7 +347,7 @@ function show_menu()
 		screenstr += '<a href="javascript:replay_hand();">Replay Hand</a><br />';
 		screenstr += '<a href="javascript:show_hands();">Show Hands</a><br />';
 		screenstr += '<a href="javascript:show_tricks();">Show Tricks</a><br />';
-	}	
+	}
 	screenstr += '<a href="javascript:show_scoreboard();">Show Scoreboard</a><br />';
 	screenstr += '<a href="javascript:show_credits();">Show Credits</a><br />';
 	screenstr += '</font>' + "\n" + '</div>'+ "\n";
@@ -384,7 +384,7 @@ function show_scoreboard()
 		thisbidder += '-' + hbid[i];
 		screenstr += i + '. ' + thisbidder;
 		screenstr += '</font></td>';
-			
+
 		screenstr += '<td><font face="arial black" size="+2">';
 		tscore  = hmeld[1][i];
 		if (hset[i] == 1)
@@ -420,7 +420,7 @@ function show_scoreboard()
 		screenstr += '<td><font face="arial black" size="+2">';
 		screenstr += i + '. ';
 		screenstr += '</font></td>';
-			
+
 		screenstr += '<td><font face="arial black" size="+2">';
 		screenstr += ' &nbsp; </font></td>';
 
@@ -438,7 +438,7 @@ function show_scoreboard()
 	myscreendiv.innerHTML = screenstr;
 	var sbobj = document.getElementById("sboard");
 	sbobj.scrollTop = sbobj.scrollHeight;
-}	
+}
 function first_game()
 {
 	screenstr = '<div style="position:absolute;  z-index:1; left:105px; top:125px;  width: 780px; ';
@@ -549,7 +549,7 @@ function replay_hand()
 	if (prevhand > 0)
 	{
 		curscoreus =  hscore[1][prevhand];
-		curscorethem = hscore[2][prevhand];	
+		curscorethem = hscore[2][prevhand];
 	}
 	gamewinner = 0;
 	i = 1;
@@ -582,7 +582,7 @@ function replay_hand()
 	deal();
 	calculate_meld_bid();
 	get_bids();
-}	
+}
 function calculate_meld_bid()
 {
 	// calclate melds and bids for each player
@@ -624,7 +624,7 @@ function calculate_meld_bid()
 			{
 				j = 6;
 			}
-			// temp will hold the minimum number of the current rank(j) in any suit(k) for each player(i) 
+			// temp will hold the minimum number of the current rank(j) in any suit(k) for each player(i)
 			temp=3;
 			k = 1;
 			while (k <= 4)
@@ -664,7 +664,7 @@ function calculate_meld_bid()
 			{
 				marrys[i][j] = 2;
 			}
-			//marriages worth 2 no matter what trump is 
+			//marriages worth 2 no matter what trump is
 			meld[i][0] += marrys[i][j] * 2;
 			// marriage in trump worth 4
 			meld[i][j] += marrys[i][j] * 2;
@@ -684,7 +684,7 @@ function calculate_meld_bid()
 					{
 						temp = ahand[i][j][k];
 					}
-				} 
+				}
 			 	k++;
 			}
 
@@ -709,9 +709,9 @@ function calculate_meld_bid()
 			// Now calulate bid for each suit for each player
 			bid[i][j] = meld[i][0] + meld[i][j] + aces[i]*2 + Math.floor(suitnum[i][j]/2) + 5;
 			// and hear is how the computer players bid
-			// meld for a given suit if it is trump + 2 points for each ace + half the number of that suit  
+			// meld for a given suit if it is trump + 2 points for each ace + half the number of that suit
 			// + 5 poits assumed meld + tricks from partner (as weak as this seems it works
-			// fairly well in practice). 
+			// fairly well in practice).
 			if (bid[i][j] == hibid)
 			{
 				// tiebreaker  --- look at the power for the contending suits
@@ -727,7 +727,7 @@ function calculate_meld_bid()
 			}
 			j++;
 		}
-		trump[i] = temp;   
+		trump[i] = temp;
 		i++;
 	}
 }
@@ -747,7 +747,7 @@ function deal()
 		j = 1;
 		while (j <= 12)
 		{
-			tmpstr += shuff[k]; 
+			tmpstr += shuff[k];
 			// The Ace of Diamonds is card 47 & 48 -- after this it they are both 24
 			tmpnum = Math.floor((shuff[k]/2)+0.5);
 			var s = Math.floor((tmpnum-1)/6)+1;
@@ -759,7 +759,7 @@ function deal()
 			j++;
 			k++;
 		}
- 
+
 		s = 1;
 		cnum = 1;
 
@@ -794,13 +794,13 @@ function deal()
 			s++;
 		}
 
-	
+
 		i++;
 	}
 	j = 1;
 	while (j <= 12)
 	{
-		humplayed[j] = 0; 
+		humplayed[j] = 0;
 		j++;
 	}
 //	show_raw_hands();
@@ -864,7 +864,7 @@ function show_hands()
 	i = 1;
 	while (i <= 4)
 	{
-		vpos = 15+((i-1)*65); 
+		vpos = 15+((i-1)*65);
 		screenstr +='<div style="position:absolute; ';
 		screenstr +='top:' + (vpos+15) + 'px; left:20px; ';
 		screenstr +='width:260px; height:50px; ';
@@ -926,7 +926,7 @@ function show_hands()
 		hpos = hpos + 150;
 		i++;
 	}
-		
+
 	i = 1;
 	uporoutmark = "";
 	if (uporout)
@@ -940,7 +940,7 @@ function show_hands()
 		{
 			nobidmark = "N";
 		}
-		vpos = vpos+40; 
+		vpos = vpos+40;
 		screenstr +='<div style="position:absolute; ';
 		screenstr +='top:' + (vpos+15) + 'px; left:20px; ';
 		screenstr +='width:260px; height:40px; ';
@@ -975,7 +975,7 @@ function show_hands()
 		i++;
 	}
 
-	vpos = vpos+40; 
+	vpos = vpos+40;
 	screenstr +='<div style="position:absolute; ';
 	screenstr +='top:' + (vpos+15) + 'px; left:20px; ';
 	screenstr +='width:700px; height:40px; ';
@@ -997,11 +997,11 @@ function show_tricks()
 		sent[1][j] = "SUPPOSED HUMAN LOGIC";
 		vsent[1][j] = "SUPPOSED HUMAN LOGIC";
 		j++;
-	} 
+	}
 	var i = 1;
 	while (i <= 4)
 	{
-		vpos = 50+((i-1)*75); 
+		vpos = 50+((i-1)*75);
 		screenstr +='<div style="position:absolute; ';
 		screenstr +='top:' + (vpos+15) + 'px; left:20px; ';
 		screenstr +='width:260px; height:50px; ';
@@ -1075,7 +1075,7 @@ function why_this_card(trickcard)
 	document.dummy.message.value = "Blue Cards Are Leads, Click On Any Card For Info On The Decision To Play That Card.\n";
 	document.dummy.message.value += "Player: " + mnames[player] + " Trick: " + card + "\n";
 	document.dummy.message.value += vsent[player][card];
-}	
+}
 function changename(change)
 {
 	stcurname += change;
@@ -1115,7 +1115,7 @@ function get_bids()
 	screenstr += draw_human_hand("readonly");
 	screenstr += draw_status();
 	screenstr += draw_score();
-	seltrumpscr = screenstr; 
+	seltrumpscr = screenstr;
 	whobid = dealer +1;
 	uporout = 1;
 	if (curscorethem < 95)
@@ -1145,7 +1145,7 @@ function get_bids()
 			talign = "center";
 			vpos = 180;
 			hpos = 430;
-		} 
+		}
 		if (whobid == 4)
 		{
 			talign = "right";
@@ -1159,7 +1159,7 @@ function get_bids()
 // 3.b take a bigger chance in bidder up or out
 			thisbid += 5;
 		}
-// 3.b if opponent is dealing, about to go out and current bidder can not go out -- DO NOT BID		
+// 3.b if opponent is dealing, about to go out and current bidder can not go out -- DO NOT BID
 		nobid[whobid] = 0;
 		if ((whobid == 1 || whobid == 3) && (dealer == 2 || dealer == 4) )
 		{
@@ -1177,7 +1177,7 @@ function get_bids()
 		}
 		if ((thisbid > curbid) && (thisbid >= 21) && (nobid[whobid] != 1))
 		{
-	
+
 			if (dealer == whobid)
 			{
 				curbid++;
@@ -1188,7 +1188,7 @@ function get_bids()
 			}
 
 			curbidder = whobid;
-	
+
 			thisbid = "BID " + thisbid;
 		}
 		else
@@ -1202,9 +1202,9 @@ function get_bids()
 	//	tmpstr += "nobid[" + whobid + "] " + nobid[whobid] + "\n";
 	//	tmpstr += "thisbid " + thisbid + "\n";
 	//	alert(tmpstr);
-		
-		
-		
+
+
+
 		screenstr +='<div style="position:absolute; text-align: ' + talign + '; ';
 		screenstr +='top:' + vpos + 'px; left:' + hpos + 'px; ';
 		screenstr +='width:150px; height:40px; ';
@@ -1246,17 +1246,17 @@ function get_bids()
 		screenstr +='</td><td rowspan="2" valign="middle"> &nbsp; <input id="humbidbtton" type="button" ';
 		screenstr +=' value="BID ' + humanbid + '" ';
 		screenstr +=' onClick="javascript:humandidbid();" style="font-weight: bold; " > &nbsp; &nbsp; ';
-		screenstr +='<input type="button" onClick="javascript:humanpasses();" value="PASS" '; 
+		screenstr +='<input type="button" onClick="javascript:humanpasses();" value="PASS" ';
 		screenstr +='style="font-weight  : bold;" ></td></tr>';
 		screenstr +='<tr><td valign="top"><input type="button"  style="font-weight  : bold; " ' ;
-		screenstr +='onClick="javacript:decrease_human_bid(' + lobid + ');" value="&darr;"></td></tr></table>';  
+		screenstr +='onClick="javacript:decrease_human_bid(' + lobid + ');" value="&darr;"></td></tr></table>';
 		screenstr += '</font>' + "\n" + '</div>'+ "\n";
 
 		myscreendiv.innerHTML = screenstr;
 	}
 }
 function humannamestrump(humtrump)
-{	
+{
 	seltrump = humtrump;
 	show_meld();
 }
@@ -1402,7 +1402,7 @@ function humandidbid()
 // 3.b take a bigger chance in bidder up or out
 		thisbid += 5;
 	}
-// 3.b if opponent is dealing, about to go out and current bidder can not go out -- DO NOT BID		
+// 3.b if opponent is dealing, about to go out and current bidder can not go out -- DO NOT BID
 
 	while (whobid != stopat)
 	{
@@ -1417,7 +1417,7 @@ function humandidbid()
 			talign = "center";
 			vpos = 180;
 			hpos = 430;
-		} 
+		}
 		if (whobid == 4)
 		{
 			talign = "right";
@@ -1448,7 +1448,7 @@ function humandidbid()
 				nobid[whobid] = 1;
 			}
 		}
-		
+
 		if ((thisbid > curbid) && (thisbid >= lobid) && (nobid[whobid] != 1))
 		{
 
@@ -1523,7 +1523,7 @@ function humandidbid()
 		{
 			show_meld();
 		}
-	}	
+	}
 }
 function show_meld()
 {
@@ -1555,7 +1555,7 @@ function show_meld()
 		}
 		i++;
 	}
-	
+
 	screenstr = ncbstr;
 	screenstr += draw_players();
 	screenstr += draw_status();
@@ -1579,7 +1579,7 @@ function show_meld()
 		vposa[3] = 73;
 		vposa[2] = 198;
 		vposa[4] = 198;
-	}	
+	}
 
 	i = 1 ;
 	while (i<= 4)
@@ -1610,7 +1610,7 @@ function show_meld()
 				screenstr += comma + "A";
 				comma = ", ";
 			}
-			
+
 			if (runs[i][j] > 0 && seltrump == j)
 			{
 				screenstr += comma + "10";
@@ -1706,7 +1706,7 @@ function play_tricks()
 	while (i <= 4)
 	{
 		hicard[i] = 6;
-		didlead[i] = 0;		
+		didlead[i] = 0;
 		j = 1;
 		while (j <= 6)
 		{
@@ -1785,13 +1785,13 @@ function show_points_taken()
 	ptsstr += '</font>' + "\n" + '</div>'+ "\n";
 
 	return ptsstr;
-}	
+}
 function play_all_tricks()
 {
 	myscreendiv = document.getElementById("myscreen");
 	myscreendiv.innerHTML = trickstr;
 	screenstr = trickstr;
-	screenstr += show_points_taken();	
+	screenstr += show_points_taken();
 	myscreendiv.innerHTML = screenstr;
 	wasbanged = 0;
 	finalwinner = 0;
@@ -1898,7 +1898,7 @@ function play_all_tricks()
 		screenstr +='<font face="arial black" font size="+2">';
 		screenstr += handout + winout;
 		screenstr += '</font>' + "\n" + '</div>'+ "\n";
-		
+
 		screenstr +='<div style="position:absolute; text-align: ' + talign + '; ';
 		screenstr +='top:470px; left:750px;  ';
 		screenstr +='width:200px; height:40px; ';
@@ -1910,7 +1910,7 @@ function play_all_tricks()
 
 		myscreendiv.innerHTML = screenstr;
 		return;
-	} 
+	}
 	while (curplayer != 1)
 	{
 		screenstr+=computer_pick();
@@ -1994,11 +1994,11 @@ function free_lead()
 	{
 		myalert(mnames[i] + ": chose " + suitnames[selsuit] + " because I have the high card and not many others");
 		vsent[i][tricknum] += "Chose " + suitnames[selsuit] + " Because I Have The High Card And Not Many Others\n";
-		// have a winner unless it gets banged 
+		// have a winner unless it gets banged
 		sent[i][tricknum] += "-WIN";
 		doplay = hicard[selsuit];
 		k = doplay;
-		while (((ahand[i][selsuit][k] + played[selsuit][k]) == 2) && (ahand[i][selsuit][k] > 0)) 
+		while (((ahand[i][selsuit][k] + played[selsuit][k]) == 2) && (ahand[i][selsuit][k] > 0))
 		{
 			doplay = k;
 			k--;
@@ -2010,7 +2010,7 @@ function free_lead()
 		{
 			hitrump = doplay;
 		}
-		 		
+
 	}
 	else
 	{
@@ -2020,7 +2020,7 @@ function free_lead()
 		// can not win trick
 		sent[i][tricknum] += "-NO WIN";
 		// did my partner have the lead yet?
-		// did they both? 
+		// did they both?
 		k = 1;
 		them = 0;
 		partgo = 0;
@@ -2035,7 +2035,7 @@ function free_lead()
 				them += didlead[k];
 			}
 			k++;
-		} 
+		}
 
 		if (them == 2 && partgo == 0)
 		{
@@ -2052,7 +2052,7 @@ function free_lead()
 					k++;
 					continue;
 				}
-				// find pssible partners aces in suits I have 
+				// find pssible partners aces in suits I have
 				if (played[k][6] < 2 && suitnum[i][k] > 0)
 				{
 					myalert(mnames[i] + ": An Ace is out for " + suitnames[k] + " and I can lead " +  suitnames[k]);
@@ -2061,7 +2061,7 @@ function free_lead()
 					break;
 				}
 				k++;
-			} 
+			}
 			if (feed > 0)
 			{
 				myalert(mnames[i] + ": Can feed my partner in " + suitnames[feed]);
@@ -2080,7 +2080,7 @@ function free_lead()
 				if (feed == seltrump)
 				{
 					hitrump = doplay;
-				} 		
+				}
 			}
 		}
 	}
@@ -2173,13 +2173,13 @@ function free_lead()
 		}
 	}
 
-}				
+}
 function get_pointer(thissuit)
 {
 	if (ahand[i][thissuit][5] > 0)
 	{
 		doplay = 5;
-	} 
+	}
 	if (ahand[i][thissuit][4] > 0)
 	{
 		doplay = 4;
@@ -2215,7 +2215,7 @@ function must_lead_trump()
 		{
 			doplay = k;
 			k--;
-		}		
+		}
 	}
 	else
 	{
@@ -2232,12 +2232,12 @@ function must_lead_trump()
 				break;
 			}
 			k++;
-		}		
+		}
 	}
 	thisplay = ((seltrump - 1) * 6) + doplay;
 	suitlead = seltrump;
 	hiplay = doplay;
-	hitrump = doplay; 		
+	hitrump = doplay;
 }
 function follow()
 {
@@ -2267,7 +2267,7 @@ function bang_it()
 		vsent[i][tricknum] += "I Have No Trump\n";
 		doplay = 0;
 		thisplay = 0;
-		thissuit = 0; 
+		thissuit = 0;
 		sent[i][tricknum] += "-NO TRUMP";
 		// can't win
 		if (((win - 2) == i) || ((win + 2) == i))
@@ -2276,7 +2276,7 @@ function bang_it()
 			vsent[i][tricknum] += "We Are Winning - Do Point\n";
 			get_any_pointer();
 			if (thisplay ==  0)
-			{ 
+			{
 				sent[i][tricknum] += "-NO POINTERS LEFT";
 				vsent[i][tricknum] += "I Have No Pointers Left\n";
 			}
@@ -2292,7 +2292,7 @@ function bang_it()
 			vsent[i][tricknum] += "Get Any Card\n";
 			get_any_card();
 		}
-	} 
+	}
 	else
 	{
 		// have trump and must bang
@@ -2312,8 +2312,8 @@ function bang_it()
 			{
 				vsent[i][tricknum] += "No trump played yet\n";
 			}
-			
-			
+
+
 			if (ahand[i][j][k] > 0 && k > hitrump)
 			{
 				vsent[i][tricknum] += "I can win current trick with an "  + cards[k] + " of trump\n";
@@ -2326,7 +2326,7 @@ function bang_it()
 			vsent[i][tricknum] += "I Can Win - Will Take Chance That Noboy Trumps Higher\n";
 			sent[i][tricknum] += "-CAN WIN";
 			thisplay = (seltrump - 1) * 6 + doplay;
-			hitrump = doplay; 
+			hitrump = doplay;
 		}
 		else
 		{
@@ -2358,7 +2358,7 @@ function bang_it()
 			}
 			thisplay = (seltrump - 1) * 6 + doplay;
 		}
-	}	
+	}
 }
 function other_lead()
 {
@@ -2367,7 +2367,7 @@ function other_lead()
 	{
 		banging[i][suitlead] = 1;
 		banging[0][suitlead] = 1;
-		// no cards in suit lead 
+		// no cards in suit lead
 		vsent[i][tricknum] += "Must Trunp -- No " + suitnames[suitlead] + " Left\n";
 		bang_it();
 
@@ -2420,7 +2420,7 @@ function other_lead()
 					vsent[i][tricknum] += "They Won Trick - Try To Throw Non-Pointer\n";
 					sent[i][tricknum] += "-WE LOST";
 				}
-				vsent[i][tricknum] += "Throw Lowest " + suitnames[suitlead] + "\n";			
+				vsent[i][tricknum] += "Throw Lowest " + suitnames[suitlead] + "\n";
 				k = 1;
 				while (k <= 6)
 				{
@@ -2432,13 +2432,13 @@ function other_lead()
 					k++;
 				}
 				thisplay = (j-1)*6+doplay;
-			
+
 			}
 		}
 		else
 		{
 			// Not Last
-			vsent[i][tricknum] += "Not Last To Play Card\n";			
+			vsent[i][tricknum] += "Not Last To Play Card\n";
 			sent[i][tricknum] += "-NOT LAST";
 			temp = hicard[j];
 			doplay = 0;
@@ -2450,14 +2450,14 @@ function other_lead()
 			}
 			if ((suitnum[0][seltrump] - suitnum[i][seltrump]) == 0)
 			{
-				vsent[i][tricknum] += "I Have All The Trump - So Won't Be Banged\n";			
+				vsent[i][tricknum] += "I Have All The Trump - So Won't Be Banged\n";
 				// current player only one with trump
 				probbanged =0;
 			}
 			if ((ahand[i][j][temp] > 0) && hiplay < temp && wasbanged != 1 && probbanged != 1)
 			{
-				// can win 
-				vsent[i][tricknum] += "Can Win\n";			
+				// can win
+				vsent[i][tricknum] += "Can Win\n";
 				sent[i][tricknum] += "-CAN WIN";
 				k = temp;
 				doplay = k;
@@ -2471,7 +2471,7 @@ function other_lead()
 				}
 				thisplay = (j-1)*6 + doplay;
 				hiplay = doplay;
-				win = i;					
+				win = i;
 			}
 			else
 			{
@@ -2484,8 +2484,8 @@ function other_lead()
 					sent[i][tricknum] += "-DO POINT";
 					get_pointer(j);
 					if (doplay == 0)
-					{ 
-						vsent[i][tricknum] += "No Pointers Left\n";			
+					{
+						vsent[i][tricknum] += "No Pointers Left\n";
 						sent[i][tricknum] += "-NO POINTERS LEFT";
 					}
 					else
@@ -2496,7 +2496,7 @@ function other_lead()
 				}
 				else
 				{
-					vsent[i][tricknum] += "We Aren't Winning -- Don't Throw A Pointer\n";			
+					vsent[i][tricknum] += "We Aren't Winning -- Don't Throw A Pointer\n";
 					sent[i][tricknum] += "-DON'T POINT";
 				}
 			}
@@ -2520,8 +2520,8 @@ function other_lead()
 	}
 }
 function get_any_non_pointer()
-{		
-	var i = curplayer;		
+{
+	var i = curplayer;
 	var j = 1;
 	while (j <= 4)
 	{
@@ -2530,7 +2530,7 @@ function get_any_non_pointer()
 		{
 			if (ahand[i][j][k] > 0)
 			{
-				
+
 				thisplay = (j-1)*6 +k;
 				j = 5;
 				k = 4;
@@ -2597,7 +2597,7 @@ function trump_lead()
 			myalert("get_any_non_pointer");
 			get_any_non_pointer();
 			if (thisplay == 0)
-			{	
+			{
 				sent[i][tricknum] += "-ONLY POINTERS LEFT";
 				vsent[i][tricknum] += "Only Pointers Left\n";
 				get_any_card();
@@ -2606,16 +2606,16 @@ function trump_lead()
 		else
 		{
 			//  Do Point
-			sent[i][tricknum] += "-DO POINT";				
+			sent[i][tricknum] += "-DO POINT";
 			myalert("We are winning");
 			vsent[i][tricknum] += "Partner Winning Trick -- Try To Throw A Pointer\n";
 			get_any_pointer();
 			if (thisplay == 0)
-			{	
+			{
 				sent[i][tricknum] += "-NO POINTERS LEFT";
 				vsent[i][tricknum] += "No Pointers Left\n";
 				get_any_card();;
-				
+
 			}
 		}
 	}
@@ -2681,7 +2681,7 @@ function trump_lead()
 					{
 						break;
 					}
-					// beat trump with pointer 
+					// beat trump with pointer
 				}
 				k++;
 			}
@@ -2708,7 +2708,7 @@ function trump_lead()
 					}
 				}
 				if (doplay == 0)
-				{ 
+				{
 					vsent[i][tricknum] += "Can't Point with K or 10\n";
 					sent[i][tricknum] += "-CAN'T POINT";
 					vsent[i][tricknum] += "Throw Lowest Piece Of Trump\n";
@@ -2724,14 +2724,14 @@ function trump_lead()
 					k++;
 					}
 				}
-			}	
+			}
 			thisplay = (seltrump-1)*6 + doplay;
 		}
 	}
 }
 function computer_pick()
 {
-	
+
 	myscreendiv = document.getElementById("myscreen");
 	var thisplay = get_comp_play();
 	curplays[curplayer] = thisplay;
@@ -2758,7 +2758,7 @@ function computer_pick()
 		{
 			finalhitrump = r;
 			finalwinner = curplayer;
-		}	
+		}
 	}
 	if ((suitlead == s) && (r > finalhiplay) && (wasbanged == 0))
 	{
@@ -2789,8 +2789,8 @@ function computer_pick()
 	ahand[curplayer][s][r]--;
 	suitnum[curplayer][s]--;
 	suitnum[0][s]--;
-	tricks[curplayer][tricknum] = thisplay; 
-	played[s][r]++; 
+	tricks[curplayer][tricknum] = thisplay;
+	played[s][r]++;
 	myalert(sent[i][tricknum]);
 	//show_raw_hands();
 	if (numthistrick == 1)
@@ -2801,7 +2801,7 @@ function computer_pick()
 		{
 			finalhitrump = r;
 		}
-	} 
+	}
 	numthistrick++;
 	vpos = 170;
 	hpos = 480;
@@ -2834,7 +2834,7 @@ function human_plays_card(thiscard)
 		}
 	}
 	else
-	{			
+	{
 		if (s != suitlead)
 		{
 			if (suitnum[1][suitlead] > 0)
@@ -2894,7 +2894,7 @@ function human_plays_card(thiscard)
 		{
 			finalhitrump = r;
 			finalwinner = curplayer;
-		}	
+		}
 	}
 	if ((suitlead == s) && (r > finalhiplay) && (wasbanged == 0))
 	{
@@ -2921,8 +2921,8 @@ function human_plays_card(thiscard)
 	hiplay = finalhiplay;
 	hitrump = finalhitrump;
 	suitnum[0][s]--;
-	tricks[curplayer][tricknum] = thisplay; 
-	played[s][r]++; 
+	tricks[curplayer][tricknum] = thisplay;
+	played[s][r]++;
 	curplays[1] = thisplay;
 	vpos = 300;
 	hpos = 480;
@@ -2981,7 +2981,7 @@ function more_computer_picks()
 		setTimeout("next_trick()", 1000*trickdelay);
 		screenstr +='<a href="javascript:next_trick();';
 		screenstr += "\n" + '</font></div>'+ "\n";
-	}		
+	}
 	myscreendiv = document.getElementById("myscreen");
 	myscreendiv.innerHTML = screenstr;
 //	pause(3);  // Pause did not work right in firefox
@@ -3001,7 +3001,7 @@ function next_trick()
 		{
 			trickval++;
 		}
-		i++;	
+		i++;
 	}
 	j = 1;
 	alstr = "";
@@ -3038,11 +3038,11 @@ function next_trick()
 	if (finalwinner == 1 || finalwinner == 3)
 	{
 		points[1] += trickval;
-	}			
+	}
 	if (finalwinner == 2 || finalwinner == 4)
 	{
 		points[2] += trickval;
-	}			
+	}
 	tricknum++;
 	numthistrick = 1;
 	wasbanged = 0;
@@ -3050,20 +3050,20 @@ function next_trick()
 	hlead[tricknum] = curplayer;
 	didlead[curplayer] = 1;
 	play_all_tricks();
-}	
+}
 
 function humandidplay()
 {
 	curplayer = 2;
 
 }
-function pause(seconds) 
+function pause(seconds)
 {
 	var dt = new Date();
 	milliseconds = 1000 * seconds;
 	while ((new Date()) - dt <= milliseconds) { /* Do nothing */ }
 }
-	
+
 function increase_human_bid()
 {
 	humanbid++;
@@ -3083,7 +3083,7 @@ function decrease_human_bid(lobid)
 function draw_players()
 {
 	var namestr = '';
-	vpos = 480; 
+	vpos = 480;
 	namestr +='<div style="position:absolute;  ';
 	namestr +='top:' + vpos + 'px; left:425px; ';
 	namestr +='width:160px; height:30px; ';
@@ -3092,7 +3092,7 @@ function draw_players()
 	namestr +=mnames[1];
 	namestr +='</font>' + "\n" + '</div>'+ "\n";
 
-	vpos = 10; 
+	vpos = 10;
 	namestr +='<div style="position:absolute;  ';
 	namestr +='top:' + vpos + 'px; left:425px; ';
 	namestr +='width:160px; height:30px; ';
@@ -3103,8 +3103,8 @@ function draw_players()
 
 	if (dealer == 1)
 	{
-		
-		vpos = 450; 
+
+		vpos = 450;
 		namestr +='<div style="position:absolute;  ';
 		namestr +='top:' + vpos + 'px; left:425px; ';
 		namestr +='width:160px; height:30px; ';
@@ -3116,8 +3116,8 @@ function draw_players()
 
 	if (dealer == 3)
 	{
-		
-		vpos = 40; 
+
+		vpos = 40;
 		namestr +='<div style="position:absolute; ';
 		namestr +='top:' + vpos + 'px; left:425px; ';
 		namestr +='width:160px; height:30px; ';
@@ -3151,7 +3151,7 @@ function draw_players()
 	namestr +='overflow:hidden; text-align: center; background-color:#00AA00;"> ';
 	namestr +='<font face="arial black" font size="+2">';
 	i = 0;
-	
+
 	while (i < tname2.length)
 	{
 		namestr += tname2.substring(i,i+1);
@@ -3169,7 +3169,7 @@ function draw_players()
 	namestr +='overflow:hidden; text-align: center; background-color:#00AA00;"> ';
 	namestr +='<font face="arial black" font size="+2">';
 	i = 0;
-	
+
 	while (i <= tname4.length)
 	{
 		namestr += tname4.substring(i,i+1);
@@ -3188,7 +3188,7 @@ function draw_players()
 		namestr +='overflow:hidden; text-align: center; background-color:#00AA00;"> ';
 		namestr +='<font face="arial black" font size="+2">';
 		i = 0;
-	
+
 		while (i <= dealstr.length)
 		{
 			namestr += dealstr.substring(i,i+1);
@@ -3207,7 +3207,7 @@ function draw_players()
 		namestr +='overflow:hidden; text-align: center; background-color:#00AA00;"> ';
 		namestr +='<font face="arial black" font size="+2">';
 		i = 0;
-	
+
 		while (i <= dealstr.length)
 		{
 			namestr += dealstr.substring(i,i+1);
@@ -3217,7 +3217,7 @@ function draw_players()
 
 		namestr +='</font>' + "\n" + '</div>'+ "\n";
 	}
-	
+
 	return namestr;
 }
 function draw_decks()
@@ -3331,14 +3331,14 @@ function enter_seed()
 	screenstr += 'This Will Allow You Or A Friend<br /> To Play The Same Game (Enter Same Seed).<br /><br />';
 	screenstr += 'Leave Blank For A Pseudo-Random Game.<br /><br />';
 	screenstr += 'Enter Seed (Number): <input name="seedentry" type="text" MAXLENGTH="7"> &nbsp; ';
-	
-	screenstr += '<input style="font-weight: bold; text-align: center;" type="button" '; 
+
+	screenstr += '<input style="font-weight: bold; text-align: center;" type="button" ';
 	screenstr += ' value="Enter Seed" onClick="set_seed();"><br /><br /></form>';
 	screenstr += '</font>' + "\n" + '</div>'+ "\n";
 	myscreendiv = document.getElementById("myscreen");
 	myscreendiv.innerHTML = cbstr + screenstr;
 	document.dummy.seedentry.focus();
-}	
+}
 function set_seed()
 {
 	tmpstr = document.dummy.seedentry.value;
@@ -3357,7 +3357,7 @@ function enter_name()
 	screenstr += '<br />Enter Name (max 7 characters) ';
 	screenstr += '<input name="nameentry" type="text" MAXLENGTH="7"><br /><br /> ';
 	screenstr += '<input name="suitoutline" type="checkbox"> Use Suit Outline (smome android phones  )<br /><br /> ';
-	
+
 	screenstr += 'Select Delay For Clearing Tricks: ';
 	screenstr += '<select name="delayentry">';
 	var i = 0;
@@ -3373,14 +3373,14 @@ function enter_name()
 		i++;
 	}
 	screenstr += '</select><br /><br />';
-	screenstr += '<input style="font-weight: bold;" type="button" '; 
+	screenstr += '<input style="font-weight: bold;" type="button" ';
 	screenstr += ' value="Continue " onClick="set_name();"><br />';
 	screenstr += '</form>';
 	screenstr += '</font>' + "\n" + '</div>'+ "\n";
 	myscreendiv = document.getElementById("myscreen");
 	myscreendiv.innerHTML = cbstr + screenstr;
 	document.dummy.nameentry.focus();
-}	
+}
 function set_name()
 {
 	var prevsuitoutline = suitoutline;
@@ -3413,7 +3413,7 @@ function set_name()
 	{
 		draw_borders();
 	}
-	
+
 	var selindex = document.dummy.delayentry.selectedIndex;
 	trickdelay = document.dummy.delayentry.options[selindex].value;
 //	alert("name: " + name);
@@ -3449,7 +3449,7 @@ function draw_card(vert,hor,rank,suit,blankit,action,objective,dohilight)
 	{
 		cardcolor = "red";
 	}
-	
+
 	var thissuit = suits[suit];
 	var thisrank = cards[rank];
 	if (blankit == 1)
@@ -3465,13 +3465,13 @@ function draw_card(vert,hor,rank,suit,blankit,action,objective,dohilight)
 		thisonclick1 = '<a style="text-decoration: none; " ';
 		thisonclick1 += ' href="javascript:human_plays_card(' + objective + ');">';
 		thisonclick2 = '</a>';
-	} 
+	}
 	if ((action == "showtrick") && (blankit != 1))
 	{
 		thisonclick1 = '<a style="text-decoration: none; " ';
 		thisonclick1 += ' href="javascript:why_this_card(' + objective + ');">';
 		thisonclick2 = '</a>';
-	} 
+	}
 	var tmpstr = thisonclick1 + '<div style="position:absolute;  z-index:1;  border-style: solid; ' ;
 	tmpstr += ' border-color:black; ';
 	tmpstr += ' border-width:2px; top:' + vert + 'px; left:' + hor + 'px; ';
